@@ -126,6 +126,40 @@ th.on{color:var(--ink)}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 0 12px}
 .filters label{display:flex;gap:6px;align-items:center;font-size:13px}.filters select{width:auto;padding:5px 8px;margin:0}
 .short{color:var(--amber)}
+/* ---- one-screen compact layout ---- */
+.top{flex-wrap:nowrap;gap:12px}.top .mnav{flex:1;justify-content:center}.mnav input{padding:4px 6px}
+.strip{grid-template-columns:230px 1fr!important}
+.collect{gap:10px;flex-wrap:nowrap}.collect p{line-height:1.25}
+.tabs{align-items:center}#filtersRow{margin-left:auto;padding:0}
+#filtersRow select{font-size:12.5px;padding:3px 6px}
+.toolbar input[type=search]{flex:0 1 200px}
+.wrap{max-width:none;padding:0 14px}
+.top{padding:8px 0}
+.brand h1{font-size:19px}.mark{width:34px;height:34px;font-size:13px}
+.monthbar{margin-top:0}.mnav h2{font-size:28px}.arrow{width:30px;height:30px}
+.strip{margin:8px 0 4px;padding:10px 14px;display:grid;grid-template-columns:minmax(260px,auto) 1fr;gap:6px 22px;align-items:center}
+.strip .collect{grid-column:1}.strip .bar{grid-column:1;margin:4px 0 0;height:10px}.strip .figs{grid-column:2;grid-row:1/3}
+.pct{font-size:34px}.collect p{font-size:13px}.collect b{font-size:15px}
+.figs{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px 12px}.figs dt{font-size:12px}.figs dd{font-size:17px}.figs small{font-size:11.5px}
+.tabs{margin-top:6px}.tabs button{padding:7px 12px}
+.toolbar{padding:8px 0;gap:6px}.chip{padding:3px 9px;font-size:12.5px}.toolbar .btn{padding:6px 10px;font-size:13.5px}
+.filters{padding:0 0 8px}
+.sheet{overflow:visible}
+table.fit{min-width:0;table-layout:fixed;width:100%}
+table.fit th{position:sticky;top:0;z-index:3;background:var(--surface);font-size:11.5px;line-height:1.2;padding:6px 5px;white-space:normal;box-shadow:0 1px 0 var(--line)}
+table.fit th small{font-weight:500}
+table.fit td{padding:4px 5px;font-size:13px}
+table.fit td.n{font-size:13.5px}
+table.fit td.party{position:static;min-width:0;font-size:13px;overflow-wrap:anywhere}
+table.fit td.party small{font-size:11.5px}
+table.fit .cell{min-width:0;width:100%;font-size:13.5px;padding:3px 4px;text-align:right}
+table.fit .cell.mini{font-size:11.5px;color:var(--muted);padding:1px 4px;margin-top:1px}
+table.fit select.cell{text-align:left;padding:1px 2px}
+table.fit textarea.cell{text-align:left;font-family:var(--ui);font-size:12.5px;resize:none;line-height:1.3;min-height:0;display:block}
+table.fit .addpay{margin-left:3px;padding:0 5px}
+table.fit .age{font-size:11.5px}
+table.fit .tag{font-size:10.5px;padding:0 5px}
+@media (max-width:1100px){.sheet{overflow-x:auto}table.fit{min-width:1080px}.strip{grid-template-columns:1fr}.strip .figs{grid-column:1;grid-row:auto}.figs{grid-template-columns:repeat(3,1fr)}}
 </style>
 </head>
 <body>
@@ -135,10 +169,10 @@ th.on{color:var(--ink)}
 </div>
 
 <section id="login" class="gate" hidden>
-  <form id="loginForm" class="box">
+  <form id="loginForm" class="box" autocomplete="off">
     <div><h1>RBM Receivables</h1><p>Reality Building Materials Trading LLC</p></div>
-    <label>Your name<input id="lName" required autocomplete="name" placeholder="Shown on updates you make"></label>
-    <label>Password<input type="password" id="lPass" required autocomplete="current-password"></label>
+    <label>Your name<input id="lName" name="rbm-user" required autocomplete="off" readonly placeholder="Shown on updates you make"></label>
+    <label>Password<input type="password" id="lPass" name="rbm-key" required autocomplete="new-password" readonly></label>
     <button class="btn" type="submit" id="lBtn">Sign in</button>
     <p id="lErr" class="red" hidden></p>
   </form>
@@ -147,27 +181,23 @@ th.on{color:var(--ink)}
 <main id="main" class="wrap" hidden>
   <header class="top">
     <div class="brand"><div class="mark">RBM</div><div><h1>Receivables</h1><p>Reality Building Materials Trading LLC</p></div></div>
+    <div class="mnav"><button class="arrow" id="mPrev" aria-label="Previous month">‹</button><h2 id="mTitle"></h2><button class="arrow" id="mNext" aria-label="Next month">›</button><input type="month" id="mPick" aria-label="Pick month"><button class="btn ghost sm" id="mToday">This month</button></div>
     <div class="who"><span id="whoName"></span><span id="sync" class="role live-only">Live</span><button class="btn ghost sm" data-signout>Log out</button></div>
   </header>
-  <div class="monthbar">
-    <div class="mnav"><button class="arrow" id="mPrev" aria-label="Previous month">‹</button><h2 id="mTitle"></h2><button class="arrow" id="mNext" aria-label="Next month">›</button><input type="month" id="mPick" aria-label="Pick month"></div>
-    <button class="btn ghost" id="mToday">This month</button>
-  </div>
   <section class="strip" id="strip"></section>
-  <nav class="tabs"><button data-tab="sheet" class="on">Monthly sheet</button><button data-tab="log">Payments received</button></nav>
+  <nav class="tabs"><button data-tab="sheet" class="on">Monthly sheet</button><button data-tab="log">Payments received</button><div class="filters" id="filtersRow">
+      <label>Oldest due month<select id="fMonth"></select></label>
+      <label>Credit days<select id="fDays"></select></label>
+      <label>Remarks<select id="fRem"><option value="">Any</option><option value="with">With remarks</option><option value="without">Without remarks</option></select></label>
+      <button class="btn ghost sm" id="fClear">Clear filters</button>
+    </div></nav>
 
   <section id="tab-sheet">
     <div class="toolbar">
       <input type="search" id="q" placeholder="Search customer or remarks"><div id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div><span class="sp"></span>
       <button class="btn ghost" data-act="import">Import Excel</button><button class="btn ghost" id="exportBtn">Download Excel</button><button class="btn" data-act="add">Add customer</button>
     </div>
-    <div class="filters">
-      <label>Oldest due month<select id="fMonth"></select></label>
-      <label>Credit days<select id="fDays"></select></label>
-      <label>Remarks<select id="fRem"><option value="">Any</option><option value="with">With remarks</option><option value="without">Without remarks</option></select></label>
-      <button class="btn ghost sm" id="fClear">Clear filters</button>
-    </div>
-    <p class="hint">Type directly into the white boxes; changes save when you leave the box. Click a column heading to sort. Use + next to Received to record a payment.</p>
+    <p class="hint" hidden>Type directly into the white boxes; changes save when you leave the box. Click a column heading to sort. Use + next to Received to record a payment.</p>
     <div class="sheet" id="sheetWrap"></div>
   </section>
   <section id="tab-log" hidden><div class="toolbar"><span id="logSum" class="muted"></span></div><div class="sheet narrow" id="logWrap"></div></section>
@@ -233,7 +263,7 @@ const num = v => { if (v == null || v === "") return null; if (typeof v === "num
 const inMonth = (iso, m) => iso >= m + "-01" && iso <= monthEnd(m);
 const normName = s => String(s || "").toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
 const entryId = (cid, m) => cid + "_" + m;
-function toast(msg, err) { const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : ""); clearTimeout(t._h); t._h = setTimeout(() => t.className = "", 2400); }
+function toast(msg, err) { const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : ""); clearTimeout(t._h); t._h = setTimeout(() => t.className = "", err ? 7000 : 2400); }
 function show(id) { ["login", "main"].forEach(x => $("#" + x).hidden = x !== id); }
 
 /* ---------- storage ---------- */
@@ -299,7 +329,7 @@ function calc(c, m) {
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00") - new Date(a + "T00:00")) / 864e5);
 
 /* ---------- filters + sorting ---------- */
-const CHIPS = {all: "All", overdue: "Above credit days", limit: "Over limit", short: "Short of expected", met: "Expected collected", noexp: "No expected set", clear: "Fully cleared"};
+const CHIPS = {all: "All", overdue: "Above credit days", limit: "Over limit", short: "Short", met: "Collected", noexp: "No expected", clear: "Cleared"};
 const chipTest = {all: () => true, overdue: r => r.overdue > 0.009, limit: r => r.overLimit, short: r => r.short > 0.009, met: r => r.expected > 0 && r.received >= r.expected - 0.009, noexp: r => r.expected == null && r.totalDue > 0.009, clear: r => r.carryNext <= 0.009};
 const SORTS = {name: r => r.c.name.toLowerCase(), carried: r => r.carried, dues: r => r.dues, dueMonth: r => r.dueMonth, totalDue: r => r.totalDue, expected: r => r.expected ?? -1, received: r => r.received, short: r => r.short ?? -1,
   carryNext: r => r.carryNext, oldest: r => r.oldest ? r.oldest.age : -1, overdue: r => r.overdue, creditDays: r => r.c.creditDays ?? -1, creditLimit: r => r.c.creditLimit ?? -1, remarks: r => r.remarks.toLowerCase()};
@@ -327,15 +357,15 @@ function strip(rows) {
   const exp = t("expected"), rec = t("received"), od = t("overdue"), base = exp > 0 ? exp : t("totalDue");
   const pct = base > 0 ? Math.min(100, rec / base * 100) : 0;
   const expRec = r2(rows.filter(r => r.expected > 0).reduce((s, r) => s + Math.min(r.received, r.expected), 0));
-  $("#strip").innerHTML = `<div class="collect"><span class="pct">${pct.toFixed(1)}%</span><p>of expected collected: <b>AED ${fmt(rec)}</b> received against <b>AED ${fmt(exp)}</b> expected in ${mLabel(S.month)}</p></div>
+  $("#strip").innerHTML = `<div class="collect"><span class="pct">${pct.toFixed(1)}%</span><p>of expected collected<br><b>${fmt(rec)}</b> of <b>${fmt(exp)}</b> AED</p></div>
     <div class="bar" aria-hidden="true"><span style="width:${pct}%"></span></div>
     <dl class="figs">
       <div><dt>Expected this month</dt><dd>${fmt(exp)}</dd></div>
       <div><dt>Received</dt><dd class="green">${fmt(rec)}</dd></div>
       <div><dt>Short of expected</dt><dd class="short">${fmt(t("short"))}</dd><small>${rows.filter(r => r.short > 0.009).length} customers</small></div>
-      <div><dt>Total outstanding</dt><dd>${fmt(t("totalDue"))}</dd><small>carried forward ${fmt(t("carried"))}</small></div>
-      <div><dt>Carry forward to next month</dt><dd>${fmt(t("carryNext"))}</dd></div>
-      <div class="r"><dt>Above credit days</dt><dd>${fmt(od)}</dd><small>${rows.filter(r => r.overdue > 0.009).length} customers, ${rows.filter(r => r.overLimit).length} over limit</small></div>
+      <div><dt>Total outstanding</dt><dd>${fmt(t("totalDue"))}</dd><small>incl. ${fmt(t("carried"))} b/f</small></div>
+      <div><dt>Carry forward</dt><dd>${fmt(t("carryNext"))}</dd></div>
+      <div class="r"><dt>Above credit days</dt><dd>${fmt(od)}</dd><small>${rows.filter(r => r.overdue > 0.009).length} customers</small></div>
     </dl>`;
 }
 function fillFilterSelects(rows) {
@@ -357,23 +387,21 @@ function sheet(rows) {
   const mb = monthsBack(S.month, 18);
   const opts = sel => mb.map(m => `<option value="${m}" ${m === sel ? "selected" : ""}>${mShort(m)}</option>`).join("") + (mb.includes(sel) ? "" : `<option value="${sel}" selected>${mShort(sel)}</option>`);
   const th = (k, label, cls = "") => `<th class="sortable ${cls} ${S.sortKey === k ? "on" : ""}" data-sort="${k}">${label}${S.sortKey === k ? `<span class="arr">${S.sortDir > 0 ? "▲" : "▼"}</span>` : ""}</th>`;
-  $("#sheetWrap").innerHTML = `<table><thead><tr><th>#</th>${th("name", "Customer")}${th("carried", "Carried forward", "n")}${th("dues", "New dues", "n")}${th("dueMonth", "Dues month")}${th("totalDue", "Total outstanding", "n")}${th("expected", "Expected", "n")}${th("received", "Received", "n")}${th("short", "Short of expected", "n")}${th("carryNext", "Carry forward", "n")}${th("oldest", "Oldest due")}${th("overdue", "Above credit days", "n")}${th("creditDays", "Credit days", "n")}${th("creditLimit", "Credit limit", "n")}${th("remarks", "Remarks")}</tr></thead><tbody>
+  $("#sheetWrap").innerHTML = `<table class="fit"><colgroup><col style="width:2.5%"><col style="width:15%"><col style="width:7.5%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:7.5%"><col style="width:7.5%"><col style="width:8%"><col style="width:9%"><col style="width:6.5%"><col></colgroup>
+  <thead><tr><th>#</th>${th("name", "Customer")}${th("carried", "Carried fwd", "n")}${th("dues", "New dues<br><small>& month</small>", "n")}${th("totalDue", "Total<br>outstanding", "n")}${th("expected", "Expected", "n")}${th("received", "Received", "n")}${th("short", "Short of<br>expected", "n")}${th("carryNext", "Carry<br>forward", "n")}${th("oldest", "Oldest due<br><small>above credit</small>")}${th("creditDays", "Credit days<br><small>& limit</small>", "n")}${th("remarks", "Remarks")}</tr></thead><tbody>
   ${list.map((r, i) => `<tr data-id="${r.c.id}" class="${r.overdue > 0.009 ? "od" : ""}"><td class="muted">${i + 1}</td>
     <td class="party">${esc(r.c.name)}${r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : ""}<small>${esc(r.c.contact || "")}</small></td>
     <td class="n">${cr(r.carried)}</td>
-    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="dues" inputmode="decimal" value="${v(r.e.dues)}" aria-label="New dues"></td>
-    <td class="edit"><select class="cell" data-id="${r.c.id}" data-f="dueMonth" aria-label="Dues month">${opts(r.dueMonth)}</select></td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="dues" inputmode="decimal" value="${v(r.e.dues)}" aria-label="New dues" placeholder="0.00"><select class="cell mini" data-id="${r.c.id}" data-f="dueMonth" aria-label="Dues month">${opts(r.dueMonth)}</select></td>
     <td class="n"><b>${cr(r.totalDue)}</b></td>
-    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="expected" inputmode="decimal" value="${v(r.expected)}" aria-label="Expected" style="font-weight:600"></td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="expected" inputmode="decimal" value="${v(r.expected)}" aria-label="Expected" placeholder="0.00" style="font-weight:600"></td>
     <td class="n green">${fz(r.received)}<button class="addpay" data-pay="${r.c.id}" title="Record payment">+</button></td>
     <td class="n short">${r.short > 0.009 ? fmt(r.short) : r.expected > 0 ? `<span class="green">Done</span>` : ""}</td>
     <td class="n"><b>${cr(r.carryNext)}</b></td>
-    <td style="white-space:nowrap">${r.oldest ? `${mShort(r.oldest.dm)}<span class="age ${r.oldest.late ? "red" : ""}">${r.oldest.age} days${r.c.creditDays != null ? " of " + r.c.creditDays : ""}</span>` : `<span class="muted">–</span>`}</td>
-    <td class="n red">${r.overdue > 0.009 ? `<b>${fmt(r.overdue)}</b>` : ""}</td>
-    <td class="edit"><input class="cell sm" data-id="${r.c.id}" data-f="creditDays" inputmode="numeric" value="${r.c.creditDays ?? ""}" aria-label="Credit days"></td>
-    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="creditLimit" inputmode="decimal" value="${v(r.c.creditLimit)}" aria-label="Credit limit"></td>
-    <td class="edit"><input class="cell txt" data-id="${r.c.id}" data-f="remarks" value="${esc(r.remarks)}" placeholder="Add remark" aria-label="Remarks"></td></tr>`).join("")}
-  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("carried")}</td><td class="n">${t("dues")}</td><td></td><td class="n">${t("totalDue")}</td><td class="n">${t("expected")}</td><td class="n">${t("received")}</td><td class="n">${t("short")}</td><td class="n">${t("carryNext")}</td><td></td><td class="n red">${t("overdue")}</td><td></td><td></td><td></td></tr></tfoot></table>`;
+    <td>${r.oldest ? `${mShort(r.oldest.dm)}<span class="age ${r.oldest.late ? "red" : ""}">${r.oldest.age}${r.c.creditDays != null ? "/" + r.c.creditDays : ""} days</span>${r.overdue > 0.009 ? `<b class="red num">${fmt(r.overdue)}</b>` : ""}` : `<span class="muted">–</span>`}</td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="creditDays" inputmode="numeric" value="${r.c.creditDays ?? ""}" aria-label="Credit days" placeholder="days"><input class="cell mini" data-id="${r.c.id}" data-f="creditLimit" inputmode="decimal" value="${v(r.c.creditLimit)}" aria-label="Credit limit" placeholder="limit"></td>
+    <td class="edit"><textarea class="cell txt" rows="2" data-id="${r.c.id}" data-f="remarks" placeholder="Add remark" aria-label="Remarks">${esc(r.remarks)}</textarea></td></tr>`).join("")}
+  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("carried")}</td><td class="n">${t("dues")}</td><td class="n">${t("totalDue")}</td><td class="n">${t("expected")}</td><td class="n">${t("received")}</td><td class="n">${t("short")}</td><td class="n">${t("carryNext")}</td><td class="n red">${t("overdue")}</td><td></td><td></td></tr></tfoot></table>`;
 }
 async function saveCell(inp) {
   const cid = inp.dataset.id, f = inp.dataset.f, c = S.customers.find(x => x.id === cid); if (!c) return;
@@ -585,7 +613,7 @@ $("#fClear").onclick = () => { Object.assign(S, {filter: "all", q: "", fMonth: "
 $("#chips").onclick = e => { const b = e.target.closest("[data-f]"); if (b) { S.filter = b.dataset.f; render(); } };
 $("#exportBtn").onclick = exportExcel;
 $("#sheetWrap").addEventListener("change", e => { if (e.target.classList.contains("cell")) saveCell(e.target); });
-$("#sheetWrap").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("cell")) e.target.blur(); });
+$("#sheetWrap").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && e.target.classList.contains("cell")) { e.preventDefault(); e.target.blur(); } });
 $("#sheetWrap").addEventListener("focusout", () => setTimeout(() => { if (deferred && !($("#sheetWrap").contains(document.activeElement) && document.activeElement.classList.contains("cell"))) { deferred = false; render(); } }, 50));
 $("#main").addEventListener("click", e => {
   const act = e.target.closest("[data-act]")?.dataset.act;
@@ -598,19 +626,24 @@ $("#main").addEventListener("click", e => {
 });
 $("#scrim").onclick = closeDrawer;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && S.open && !document.querySelector("dialog[open]")) closeDrawer(); });
-$$("[data-signout]").forEach(b => b.onclick = () => { try { localStorage.removeItem("rbm-session"); } catch (e) {} location.reload(); });
+$$("[data-signout]").forEach(b => b.onclick = () => { try { sessionStorage.removeItem("rbm-session"); } catch (e) {} location.reload(); });
 
 /* ---------- start: always ask for login ---------- */
 document.body.classList.add("live");
-const enter = async (name, pw, remember) => { const st = new SheetStore(pw); await st.call({action: "ping"}); if (remember) try { localStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {} store = st; me = {name}; start(); };
+const BACKEND_VERSION = 4;
+const enter = async (name, pw, remember) => { const st = new SheetStore(pw); const v = await st.call({action: "ping"});
+  if (v !== BACKEND_VERSION) setTimeout(() => toast("Your Google Script (Code.gs) is an older version. Paste the latest Code.gs and deploy a New version, otherwise saving and import won't work.", true), 600); if (remember) try { sessionStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {} store = st; me = {name}; start(); };
 $("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true;
   if (!LIVE) { $("#lErr").textContent = "The Google Script link is missing. Paste it into SCRIPT_URL at the top of the script in index.html."; $("#lErr").hidden = false; return; }
   $("#lBtn").disabled = true;
   try { await enter($("#lName").value.trim(), $("#lPass").value, true); }
   catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\"." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
   $("#lBtn").disabled = false; };
-let saved = null; try { saved = JSON.parse(localStorage.getItem("rbm-session")); } catch (e) {}
-if (LIVE && saved) enter(saved.name, saved.pw, false).catch(() => { try { localStorage.removeItem("rbm-session"); } catch (e) {} show("login"); });
+try { localStorage.removeItem("rbm-session"); } catch (e) {}
+["#lName", "#lPass"].forEach(id => { const el = $(id); el.value = ""; el.addEventListener("focus", () => el.removeAttribute("readonly"), {once: true}); });
+setTimeout(() => { $("#lName").value = ""; $("#lPass").value = ""; }, 300);
+let saved = null; try { saved = JSON.parse(sessionStorage.getItem("rbm-session")); } catch (e) {}
+if (LIVE && saved) enter(saved.name, saved.pw, false).catch(() => { try { sessionStorage.removeItem("rbm-session"); } catch (e) {} show("login"); });
 else show("login");
 </script>
 </body>
