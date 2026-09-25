@@ -140,12 +140,12 @@ body:not(.can-edit) .edit-only{display:none!important} body:not(.is-admin) .admi
     <div class="toolbar">
       <input type="search" id="q" placeholder="Search party, phone or status"><div id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div><span class="sp"></span>
       <select id="sort" aria-label="Sort"><option value="overdue">Most overdue first</option><option value="balance">Highest balance first</option><option value="name">Party A–Z</option></select>
-      <button class="btn ghost" id="exportBtn">Download Excel</button><button class="btn edit-only" data-act="addParty">Add party</button>
+      <button class="btn ghost edit-only" data-act="import">Import Excel</button><button class="btn ghost" id="exportBtn">Download Excel</button><button class="btn edit-only" data-act="addParty">Add party</button>
     </div>
     <div class="sheet" id="sheetWrap"></div>
   </section>
   <section id="tab-log" hidden><div class="toolbar"><span id="logSum" class="muted"></span></div><div class="sheet narrow" id="logWrap"></div></section>
-  <section id="tab-parties" hidden><div class="toolbar"><input type="search" id="pq" placeholder="Search parties"><span class="sp"></span><button class="btn edit-only" data-act="addParty">Add party</button></div><div class="sheet narrow" id="partiesWrap"></div></section>
+  <section id="tab-parties" hidden><div class="toolbar"><input type="search" id="pq" placeholder="Search parties"><span class="sp"></span><button class="btn ghost edit-only" data-act="import">Import Excel</button><button class="btn edit-only" data-act="addParty">Add party</button></div><div class="sheet narrow" id="partiesWrap"></div></section>
 </main>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -163,13 +163,22 @@ body:not(.can-edit) .edit-only{display:none!important} body:not(.is-admin) .admi
     <div class="dacts"><button class="btn ghost" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Save party</button></div>
   </form>
 </dialog>
+<dialog id="importDlg" style="width:min(560px,94vw)"><h3>Import from Excel</h3>
+  <form id="importForm" method="dialog">
+    <p class="muted" style="margin:0;font-size:14px">Upload your receivables sheet or the template. Parties already in the app are matched by name, so nothing is duplicated. Each row can have the party, an invoice (or opening balance) and an amount already received.</p>
+    <label>Excel file<input type="file" name="file" accept=".xlsx,.xls,.csv"></label>
+    <label>Date to use when a row has no date<input type="date" name="date"></label>
+    <div id="impPreview" class="meta" style="font-size:14px"></div>
+    <div class="dacts" style="flex-wrap:wrap"><button type="button" class="btn ghost" id="tplBtn">Download template</button><span class="sp"></span><button class="btn ghost" value="cancel" formnovalidate>Cancel</button><button class="btn" type="button" id="impGo" disabled>Import</button></div>
+  </form>
+</dialog>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 /* ===== PASTE YOUR GOOGLE APPS SCRIPT WEB APP LINK HERE (see README) =====
    While it starts with PASTE, the page runs in demo mode (data stays in this browser). */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzW9OBFKz8Oz2JU1a1PfoCaj2T2IaZx0NCMnSBmTEAuuKMSF01Y9Cwt9zeC4pPGPpA/exec";
+const SCRIPT_URL = "PASTE_YOUR_SCRIPT_URL";
 const COMPANY = "Reality Building Materials Trading LLC";
 const LIVE = SCRIPT_URL.startsWith("https://script.google.com/");
 
@@ -225,7 +234,7 @@ class SheetStore {
   async add(col, o) { await this.call({action: "add", col, obj: clean(o)}); await this.refresh(); }
   async addMany(items) { await this.call({action: "addMany", items: clean(items)}); await this.refresh(); }
   async update(col, id, patch) { await this.call({action: "update", col, id, patch: clean(patch)}); await this.refresh(); }
-  async setMonthly(id, m, v) { await this.call({action: "monthly", id, key: mkey(m), val: clean(v)}); await this.refresh(); }
+  async setMonthly(id, m, v, quiet) { await this.call({action: "monthly", id, key: mkey(m), val: clean(v)}); if (!quiet) await this.refresh(); }
   async remove(col, id) { await this.call({action: "remove", col, id}); await this.refresh(); }
 }
 
@@ -289,7 +298,7 @@ function sheet(rows) {
   const c = {all: rows.length, overdue: 0, pending: 0, cleared: 0, legal: 0}; rows.forEach(r => c[stateOf(r)]++);
   const nm = {all: "All", overdue: "Overdue", pending: "Pending", cleared: "Cleared", legal: "Legal"};
   $("#chips").innerHTML = Object.keys(nm).map(k => `<button class="chip ${k === "overdue" ? "od" : ""} ${S.filter === k ? "on" : ""}" data-f="${k}">${nm[k]}<b>${c[k]}</b></button>`).join("");
-  if (!S.parties.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>Start your receivables sheet</h3><p>Add a party, enter their invoices, and your accounts team records payments as they come in. Unpaid amounts roll into the next month by themselves.</p><button class="btn edit-only" data-act="addParty">Add first party</button>${LIVE ? "" : `<button class="btn ghost" data-act="sample">Try with sample data</button>`}</div>`; return; }
+  if (!S.parties.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>Start your receivables sheet</h3><p>Add a party, enter their invoices, and your accounts team records payments as they come in. Unpaid amounts roll into the next month by themselves.</p><button class="btn edit-only" data-act="addParty">Add first party</button><button class="btn ghost edit-only" data-act="import">Import from Excel</button>${LIVE ? "" : `<button class="btn ghost" data-act="sample">Try with sample data</button>`}</div>`; return; }
   const q = S.q.toLowerCase();
   const list = rows.filter(r => (S.filter === "all" || stateOf(r) === S.filter) && (!q || [r.p.name, r.p.contact, r.status].join(" ").toLowerCase().includes(q)))
     .sort({overdue: (a, b) => b.overdue - a.overdue || b.balance - a.balance, balance: (a, b) => b.balance - a.balance, name: (a, b) => a.p.name.localeCompare(b.p.name)}[S.sort]);
@@ -428,6 +437,95 @@ function exportExcel() {
   XLSX.writeFile(wb, `RBM Receivables ${mLabel(S.month)}.xlsx`);
 }
 
+/* ---------- Excel import ---------- */
+const normName = s => String(s || "").toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+function xlDate(v, fb) {
+  if (v instanceof Date && !isNaN(v)) return isoOf(new Date(v.getTime() + 12 * 36e5));
+  if (typeof v === "number" && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10);
+  const t = String(v ?? "").trim(); let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (m) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  return fb;
+}
+let IMP = null;
+function openImport() { const f = $("#importForm"); f.reset(); f.date.value = defDate(); IMP = null; $("#impPreview").innerHTML = ""; $("#impGo").disabled = true; $("#importDlg").showModal(); }
+function planImport(aoa, fb) {
+  const h = aoa.findIndex(r => r && r.some(c => /party/i.test(String(c ?? ""))));
+  if (h < 0) throw new Error('No "PARTY NAME" column found in the first sheet.');
+  const head = aoa[h].map(c => String(c ?? "").trim().toUpperCase());
+  const col = (...res) => { for (const re of res) { const i = head.findIndex(x => re.test(x)); if (i >= 0) return i; } return -1; };
+  const C = {name: col(/PARTY/), no: col(/INVOICE NO|INV.*NO/), invDate: col(/INVOICE DATE|INV.*DATE|^DATE$/), due: col(/AMOUNT DUE|ACTUAL DUE|INVOICE AMOUNT|^DUE$/, /TOTAL DUE/),
+    prev: col(/PREVIOUS/), rec: col(/RECEIVED(?!.*DATE)/), recDate: col(/RECEIVED DATE|PAYMENT DATE/), mode: col(/MODE/), days: col(/PAYMENT DAYS|CREDIT|TERMS|^DAYS$/), status: col(/STATUS/), contact: col(/CONTACT|PHONE|MOBILE/), email: col(/MAIL/)};
+  const g = (r, i) => i < 0 ? null : r[i];
+  const byName = new Map(S.parties.map(p => [normName(p.name), p]));
+  const items = [], statusUpd = [], created = new Map(), now = Date.now(), m = fb.slice(0, 7);
+  const sm = {newP: 0, oldP: 0, inv: 0, due: 0, pay: 0, rec: 0, dup: 0, skip: 0};
+  for (let i = h + 1; i < aoa.length; i++) {
+    const r = aoa[i] || []; const raw = String(g(r, C.name) ?? "").trim();
+    if (!raw || /^total/i.test(raw)) continue;
+    let name = raw, bracket = null; const mt = raw.match(/^(.*?)[\s\-–]*\(\s*([\d,]+(?:\.\d+)?)\s*\)\s*$/);
+    if (mt) { name = mt[1].trim(); bracket = num(mt[2]); }
+    const isPdc = /pdc/i.test(String(g(r, C.prev) ?? "")) || /pdc/i.test(String(g(r, C.due) ?? ""));
+    const terms = parseInt(String(g(r, C.days) ?? "")) || null;
+    const status = String(g(r, C.status) ?? "").trim();
+    const due = isPdc ? bracket : (num(g(r, C.due)) ?? num(g(r, C.prev)));
+    const rec = isPdc ? bracket : num(g(r, C.rec));
+    const key = normName(name);
+    let p = byName.get(key) || created.get(key), isNew = false;
+    if (!p) {
+      p = {id: newId(), name, terms, contact: String(g(r, C.contact) ?? "").trim(), email: String(g(r, C.email) ?? "").trim(), legal: /legal/i.test(status), monthly: status ? {[mkey(m)]: {status, expected: null, by: me.name, at: now}} : {}, createdAt: now, by: me.name};
+      created.set(key, p); items.push(["parties", p]); sm.newP++; isNew = true;
+    } else if (!created.has(key) && !statusUpd.some(x => x.id === p.id)) { sm.oldP++; if (status) statusUpd.push({id: p.id, status}); }
+    if (!(due > 0) && !(rec > 0) && !isNew) { sm.skip++; continue; }
+    const invDate = xlDate(g(r, C.invDate), fb), no = String(g(r, C.no) ?? "").trim() || "Opening balance";
+    const t = terms ?? p.terms ?? 0;
+    if (due > 0) {
+      if (S.dues.some(d => d.partyId === p.id && d.no === no && r2(d.amount) === due && d.date === invDate)) sm.dup++;
+      else { items.push(["dues", {id: newId(), partyId: p.id, no, date: invDate, dueDate: addDays(invDate, t), amount: due, by: me.name, at: now}]); sm.inv++; sm.due += due; }
+    }
+    if (rec > 0) {
+      const pd = xlDate(g(r, C.recDate), invDate);
+      if (S.payments.some(x => x.partyId === p.id && r2(x.amount) === rec && x.date === pd)) sm.dup++;
+      else { const mode = String(g(r, C.mode) ?? "").trim() || (isPdc ? "PDC cheque" : "Bank transfer");
+        items.push(["payments", {id: newId(), partyId: p.id, amount: rec, date: pd, mode, ref: "Excel import", chequeDate: null, by: me.name, at: now, bounced: false}]); sm.pay++; sm.rec += rec; }
+    }
+  }
+  return {items, statusUpd, sm, m};
+}
+async function previewImport() {
+  const f = $("#importForm"), file = f.file.files[0]; $("#impGo").disabled = true; IMP = null;
+  if (!file) return;
+  try {
+    if (typeof XLSX === "undefined") throw new Error("Excel reader didn't load. Check the internet connection.");
+    const wb = XLSX.read(await file.arrayBuffer(), {type: "array", cellDates: true});
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1, raw: true, defval: null});
+    IMP = planImport(aoa, f.date.value || defDate()); const x = IMP.sm;
+    $("#impPreview").innerHTML = `<b style="color:var(--ink)">Ready to import</b><br>${x.newP} new parties, ${x.oldP} matched to existing parties<br>
+      ${x.inv} invoices totalling AED ${fmt(x.due)}<br>${x.pay} payments totalling AED ${fmt(x.rec)}${x.dup ? `<br>${x.dup} rows skipped as already imported` : ""}`;
+    $("#impGo").disabled = !IMP.items.length && !IMP.statusUpd.length;
+  } catch (err) { $("#impPreview").innerHTML = `<span class="red">${esc(err.message)}</span>`; }
+}
+$("#importForm").file.onchange = previewImport;
+$("#importForm").date.onchange = previewImport;
+$("#impGo").onclick = async () => {
+  if (!IMP) return; const b = $("#impGo"); b.disabled = true; b.textContent = "Importing…";
+  try {
+    if (IMP.items.length) await store.addMany(IMP.items);
+    for (const u of IMP.statusUpd) await store.setMonthly(u.id, IMP.m, {status: u.status, expected: null, by: me.name, at: Date.now()}, true);
+    if (IMP.statusUpd.length && store.refresh) await store.refresh();
+    $("#importDlg").close(); S.month = IMP.m; setTab("sheet"); toast(`Imported ${IMP.sm.newP + IMP.sm.oldP} parties`);
+  } catch (err) { toast("Import stopped: " + err.message, true); }
+  b.textContent = "Import"; b.disabled = false;
+};
+$("#tplBtn").onclick = () => {
+  if (typeof XLSX === "undefined") return toast("Excel needs an internet connection.", true);
+  const head = ["PARTY NAME", "INVOICE NO", "INVOICE DATE", "AMOUNT DUE", "AMOUNT RECEIVED", "RECEIVED DATE", "PAYMENT MODE", "PAYMENT DAYS", "COLLECTION STATUS", "CONTACT NUMBER", "E-MAIL ADDRESS"];
+  const ex = ["EXAMPLE CONTRACTING LLC", "INV-1001", "2026-09-01", 10000, 4000, "2026-09-15", "Bank transfer", 30, "Balance end of month", "+971 50 000 0000", "accounts@example.com"];
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ex]); ws["!cols"] = head.map((h, i) => ({wch: i === 0 ? 36 : 18}));
+  XLSX.utils.book_append_sheet(wb, ws, "Import"); XLSX.writeFile(wb, "RBM Receivables import template.xlsx");
+};
+
 /* ---------- sample data for demo (fictional) ---------- */
 function sample() {
   const m = k => monthAdd(thisMonth(), k), d = (k, day) => `${m(k)}-${pad(day)}`, items = [], now = Date.now();
@@ -460,6 +558,7 @@ $("#main").addEventListener("click", e => {
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (act === "addParty") { $("#partyForm").reset(); return $("#partyDlg").showModal(); }
   if (act === "sample") return sample();
+  if (act === "import") return openImport();
   const tr = e.target.closest("tr[data-id]"); if (tr) openDrawer(tr.dataset.id);
 });
 $("#scrim").onclick = closeDrawer;
@@ -475,7 +574,7 @@ if (LIVE) {
   };
   $("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true; $("#lBtn").disabled = true;
     try { await enter($("#lName").value.trim(), $("#lPass").value, true); }
-    catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
+    catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\". If it asks you to sign in, redeploy with access set to Anyone." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
     $("#lBtn").disabled = false; };
   let saved = null; try { saved = JSON.parse(localStorage.getItem("rbm-session")); } catch (e) {}
   if (saved) enter(saved.name, saved.pw, false).catch(() => { localStorage.removeItem("rbm-session"); show("login"); }); else show("login");
