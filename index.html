@@ -107,7 +107,7 @@ body:not(.can-edit) .edit-only{display:none!important} body:not(.is-admin) .admi
 @media (prefers-reduced-motion:reduce){.bar span{transition:none}}
 </style>
 <style>
-.cell{border:1px solid transparent;background:transparent;border-radius:4px;padding:5px 6px;width:100%;min-width:90px;text-align:right;font-family:var(--num);font-size:15.5px;font-variant-numeric:tabular-nums}
+.cell{border:1px solid transparent;background:transparent;border-radius:4px;padding:5px 6px;width:100%;min-width:112px;text-align:right;font-family:var(--num);font-size:15.5px;font-variant-numeric:tabular-nums}
 .cell:hover{border-color:var(--line);background:var(--raised)}
 .cell:focus{border-color:var(--steel);background:var(--raised);outline:none}
 .cell.txt{text-align:left;font-family:var(--ui);font-size:14px;min-width:200px}
@@ -119,6 +119,13 @@ tr.od .cell{color:var(--ink)}
 .t-limit{background:var(--amber-soft);color:var(--amber)}
 tbody tr.od,tbody tr.od:hover{background:var(--red-soft)}
 td.party{position:sticky;left:0;background:var(--surface);z-index:1} tbody tr.od td.party{background:var(--red-soft)}
+select.cell{text-align:left;min-width:108px;font-family:var(--ui);font-size:14px;appearance:auto}
+th.sortable{cursor:pointer;user-select:none} th.sortable:hover{color:var(--ink)} th .arr{font-size:10px;margin-left:3px}
+th.on{color:var(--ink)}
+.age{display:block;font:500 12px var(--ui);color:var(--muted)} .age.red{color:var(--red);font-weight:600}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 0 12px}
+.filters label{display:flex;gap:6px;align-items:center;font-size:13px}.filters select{width:auto;padding:5px 8px;margin:0}
+.short{color:var(--amber)}
 </style>
 </head>
 <body>
@@ -140,7 +147,7 @@ td.party{position:sticky;left:0;background:var(--surface);z-index:1} tbody tr.od
 <main id="main" class="wrap" hidden>
   <header class="top">
     <div class="brand"><div class="mark">RBM</div><div><h1>Receivables</h1><p>Reality Building Materials Trading LLC</p></div></div>
-    <div class="who"><span id="whoName"></span><span id="sync" class="role live-only">Live</span><button class="btn ghost sm live-only" data-signout>Sign out</button></div>
+    <div class="who"><span id="whoName"></span><span id="sync" class="role live-only">Live</span><button class="btn ghost sm" data-signout>Log out</button></div>
   </header>
   <div class="monthbar">
     <div class="mnav"><button class="arrow" id="mPrev" aria-label="Previous month">‹</button><h2 id="mTitle"></h2><button class="arrow" id="mNext" aria-label="Next month">›</button><input type="month" id="mPick" aria-label="Pick month"></div>
@@ -152,10 +159,15 @@ td.party{position:sticky;left:0;background:var(--surface);z-index:1} tbody tr.od
   <section id="tab-sheet">
     <div class="toolbar">
       <input type="search" id="q" placeholder="Search customer or remarks"><div id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div><span class="sp"></span>
-      <select id="sort" aria-label="Sort"><option value="overdue">Most overdue first</option><option value="balance">Highest balance first</option><option value="name">Customer A–Z</option></select>
       <button class="btn ghost" data-act="import">Import Excel</button><button class="btn ghost" id="exportBtn">Download Excel</button><button class="btn" data-act="add">Add customer</button>
     </div>
-    <p class="hint">Type directly into New dues, Expected, Credit days, Credit limit and Remarks. It saves when you leave the box. Click a customer name to record a payment.</p>
+    <div class="filters">
+      <label>Oldest due month<select id="fMonth"></select></label>
+      <label>Credit days<select id="fDays"></select></label>
+      <label>Remarks<select id="fRem"><option value="">Any</option><option value="with">With remarks</option><option value="without">Without remarks</option></select></label>
+      <button class="btn ghost sm" id="fClear">Clear filters</button>
+    </div>
+    <p class="hint">Type directly into the white boxes; changes save when you leave the box. Click a column heading to sort. Use + next to Received to record a payment.</p>
     <div class="sheet" id="sheetWrap"></div>
   </section>
   <section id="tab-log" hidden><div class="toolbar"><span id="logSum" class="muted"></span></div><div class="sheet narrow" id="logWrap"></div></section>
@@ -170,7 +182,8 @@ td.party{position:sticky;left:0;background:var(--surface);z-index:1} tbody tr.od
     <div class="g2">
       <label>Credit days approved<input name="creditDays" inputmode="numeric" placeholder="e.g. 30"></label>
       <label>Credit limit approved (AED)<input name="creditLimit" inputmode="decimal"></label>
-      <label>Dues this month (AED)<input name="dues" inputmode="decimal"></label>
+      <label>Dues (AED)<input name="dues" inputmode="decimal"></label>
+      <label>Dues belong to month<select name="dueMonth" id="addDueMonth"></select></label>
       <label>Expected this month (AED)<input name="expected" inputmode="decimal"></label>
       <label class="full">Contact number<input name="contact" placeholder="+971 5x xxx xxxx"></label>
       <label class="full">Remarks<input name="remarks"></label>
@@ -181,7 +194,7 @@ td.party{position:sticky;left:0;background:var(--surface);z-index:1} tbody tr.od
 
 <dialog id="importDlg" style="width:min(560px,94vw)"><h3>Import from Excel</h3>
   <form id="importForm" method="dialog">
-    <p class="muted" style="margin:0;font-size:14px">Columns it reads: Customer name, Dues, Expected amount, Credit days approved, Credit limit approved, Remarks. Contact number and Received are optional. Customers already in the app are matched by name and updated, never duplicated.</p>
+    <p class="muted" style="margin:0;font-size:14px">Columns it reads: Customer name, Dues, Due month, Expected amount, Credit days approved, Credit limit approved, Remarks. Contact number and Received are optional. If Due month is empty, the import month is used. Customers already in the app are matched by name and updated, never duplicated.</p>
     <label>Excel file<input type="file" name="file" accept=".xlsx,.xls,.csv"></label>
     <label>Import into month<input type="month" name="month"></label>
     <div id="impPreview" class="meta" style="font-size:14px"></div>
@@ -253,82 +266,123 @@ class SheetStore {
 }
 
 let store, me = null, unsub = null, deferred = false;
-const S = {customers: [], entries: [], payments: [], month: thisMonth(), filter: "all", q: "", sort: "overdue", tab: "sheet", open: null};
+const S = {customers: [], entries: [], payments: [], month: thisMonth(), filter: "all", q: "", fMonth: "", fDays: "", fRem: "", sortKey: "overdue", sortDir: -1, tab: "sheet", open: null};
 
 /* ---------- engine ----------
-   Carried forward = all dues from earlier months minus all payments before this month (automatic, nothing to copy).
-   Payments clear the oldest amount first, so anything carried in from an earlier month and still unpaid is OVERDUE (red). */
+   Carried forward = all earlier dues minus all earlier payments (automatic).
+   Each due belongs to a month. Payments clear the oldest month first.
+   Age of a due is counted from the 1st of the month it belongs to. If the age is above the customer's
+   credit days, that amount is OVERDUE and the row turns red. */
+const AGE_FROM_DAY = 1;   // change to 31 to count credit days from the month end instead
 const entryOf = (cid, m) => S.entries.find(e => e.id === entryId(cid, m));
+const monthsBack = (m, n) => Array.from({length: n}, (_, i) => monthAdd(m, -i));
+const mShort = m => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 1).toLocaleString("en-US", {month: "short", year: "numeric"}); };
+function ageStart(dm) { return AGE_FROM_DAY >= 28 ? monthEnd(dm) : dm + "-" + pad(AGE_FROM_DAY); }
 function calc(c, m) {
   const es = S.entries.filter(e => e.customerId === c.id), ps = S.payments.filter(p => p.customerId === c.id && !p.bounced);
+  const end = monthEnd(m), asOf = end < today() ? end : today();
   const carried = r2(total(es.filter(e => e.month < m), "dues") - total(ps.filter(p => p.date < m + "-01")));
   const e = entryOf(c.id, m) || {};
   const dues = +e.dues || 0, received = total(ps.filter(p => inMonth(p.date, m)));
-  const totalDue = r2(carried + dues), balance = r2(totalDue - received);
-  const overdue = r2(Math.max(0, Math.min(carried - received, balance)));
-  const overLimit = +c.creditLimit > 0 && balance > +c.creditLimit;
-  return {c, e, carried, dues, received, totalDue, balance, overdue, overLimit, expected: e.expected ?? null, remarks: e.remarks || "", by: e.by || "", at: e.at || null};
+  const totalDue = r2(carried + dues), carryNext = r2(totalDue - received);
+  const expected = e.expected ?? null, short = expected != null ? r2(Math.max(0, expected - received)) : null;
+  // ageing by due month (FIFO)
+  const bk = {}; es.filter(x => x.month <= m && +x.dues).forEach(x => { const dm = x.dueMonth || x.month; bk[dm] = r2((bk[dm] || 0) + (+x.dues)); });
+  let pool = total(ps.filter(p => p.date <= asOf)); const open = [];
+  Object.keys(bk).sort().forEach(dm => { const cover = Math.min(pool, bk[dm]); pool = r2(pool - cover); const amt = r2(bk[dm] - cover);
+    if (amt > 0.009) { const age = Math.max(0, daysBetween(ageStart(dm), asOf)); const late = c.creditDays != null && c.creditDays !== "" ? age > +c.creditDays : dm < m; open.push({dm, amt, age, late}); } });
+  const overdue = r2(open.filter(o => o.late).reduce((s, o) => s + o.amt, 0));
+  const oldest = open[0] || null;
+  const overLimit = +c.creditLimit > 0 && carryNext > +c.creditLimit;
+  return {c, e, carried, dues, dueMonth: e.dueMonth || m, received, totalDue, carryNext, expected, short, open, oldest, overdue, overLimit, remarks: e.remarks || "", by: e.by || "", at: e.at || null};
 }
-const stateOf = r => r.overdue > 0.009 ? "overdue" : r.balance > 0.009 ? "pending" : "cleared";
+const daysBetween = (a, b) => Math.round((new Date(b + "T00:00") - new Date(a + "T00:00")) / 864e5);
+
+/* ---------- filters + sorting ---------- */
+const CHIPS = {all: "All", overdue: "Above credit days", limit: "Over limit", short: "Short of expected", met: "Expected collected", noexp: "No expected set", clear: "Fully cleared"};
+const chipTest = {all: () => true, overdue: r => r.overdue > 0.009, limit: r => r.overLimit, short: r => r.short > 0.009, met: r => r.expected > 0 && r.received >= r.expected - 0.009, noexp: r => r.expected == null && r.totalDue > 0.009, clear: r => r.carryNext <= 0.009};
+const SORTS = {name: r => r.c.name.toLowerCase(), carried: r => r.carried, dues: r => r.dues, dueMonth: r => r.dueMonth, totalDue: r => r.totalDue, expected: r => r.expected ?? -1, received: r => r.received, short: r => r.short ?? -1,
+  carryNext: r => r.carryNext, oldest: r => r.oldest ? r.oldest.age : -1, overdue: r => r.overdue, creditDays: r => r.c.creditDays ?? -1, creditLimit: r => r.c.creditLimit ?? -1, remarks: r => r.remarks.toLowerCase()};
+function applyFilters(rows) {
+  const q = S.q.toLowerCase();
+  return rows.filter(r => chipTest[S.filter](r)
+    && (!q || [r.c.name, r.c.contact, r.remarks].join(" ").toLowerCase().includes(q))
+    && (!S.fMonth || (r.oldest && r.oldest.dm === S.fMonth))
+    && (!S.fDays || String(r.c.creditDays ?? "none") === S.fDays)
+    && (!S.fRem || (S.fRem === "with" ? !!r.remarks : !r.remarks)))
+    .sort((a, b) => { const x = SORTS[S.sortKey](a), y = SORTS[S.sortKey](b); return (x < y ? -1 : x > y ? 1 : 0) * S.sortDir || a.c.name.localeCompare(b.c.name); });
+}
 
 /* ---------- render ---------- */
 function render() {
   $("#mTitle").textContent = mLabel(S.month); $("#mPick").value = S.month;
   const rows = S.customers.map(c => calc(c, S.month));
   strip(rows);
-  if (S.tab === "sheet") { if ($("#sheetWrap").contains(document.activeElement) && document.activeElement.classList.contains("cell")) deferred = true; else sheet(rows); }
+  if (S.tab === "sheet") { const a = document.activeElement; if ($("#sheetWrap").contains(a) && a.classList.contains("cell")) deferred = true; else sheet(rows); }
   if (S.tab === "log") log();
   if (S.open) refreshDrawer();
 }
 function strip(rows) {
   const t = k => r2(rows.reduce((s, r) => s + (+r[k] || 0), 0));
-  const due = t("totalDue"), rec = t("received"), od = t("overdue"), past = S.month < thisMonth();
-  const pct = due > 0 ? Math.min(100, Math.max(0, rec / due * 100)) : 0, odPct = due > 0 ? Math.min(100 - pct, od / due * 100) : 0;
-  const exp = t("expected"), ol = rows.filter(r => r.overLimit).length;
-  $("#strip").innerHTML = `<div class="collect"><span class="pct">${pct.toFixed(1)}%</span><p>collected: <b>AED ${fmt(rec)}</b> received of <b>AED ${fmt(due)}</b> due in ${mLabel(S.month)}${exp ? `, expected AED ${fmt(exp)}` : ""}</p></div>
-    <div class="bar" aria-hidden="true"><span style="width:${pct}%"></span><i style="left:${pct}%;width:${odPct}%"></i></div>
+  const exp = t("expected"), rec = t("received"), od = t("overdue"), base = exp > 0 ? exp : t("totalDue");
+  const pct = base > 0 ? Math.min(100, rec / base * 100) : 0;
+  const expRec = r2(rows.filter(r => r.expected > 0).reduce((s, r) => s + Math.min(r.received, r.expected), 0));
+  $("#strip").innerHTML = `<div class="collect"><span class="pct">${pct.toFixed(1)}%</span><p>of expected collected: <b>AED ${fmt(rec)}</b> received against <b>AED ${fmt(exp)}</b> expected in ${mLabel(S.month)}</p></div>
+    <div class="bar" aria-hidden="true"><span style="width:${pct}%"></span></div>
     <dl class="figs">
-      <div><dt>Carried forward</dt><dd>${fmt(t("carried"))}</dd></div>
-      <div><dt>New dues this month</dt><dd>${fmt(t("dues"))}</dd></div>
-      <div><dt>${past ? "Carried to next month" : "Still to collect"}</dt><dd>${fmt(t("balance"))}</dd></div>
-      <div class="r"><dt>Overdue</dt><dd>${fmt(od)}</dd><small>${rows.filter(r => r.overdue > 0.009).length} customers</small></div>
-      <div class="b"><dt>Over credit limit</dt><dd>${ol}</dd><small>customers</small></div>
+      <div><dt>Expected this month</dt><dd>${fmt(exp)}</dd></div>
+      <div><dt>Received</dt><dd class="green">${fmt(rec)}</dd></div>
+      <div><dt>Short of expected</dt><dd class="short">${fmt(t("short"))}</dd><small>${rows.filter(r => r.short > 0.009).length} customers</small></div>
+      <div><dt>Total outstanding</dt><dd>${fmt(t("totalDue"))}</dd><small>carried forward ${fmt(t("carried"))}</small></div>
+      <div><dt>Carry forward to next month</dt><dd>${fmt(t("carryNext"))}</dd></div>
+      <div class="r"><dt>Above credit days</dt><dd>${fmt(od)}</dd><small>${rows.filter(r => r.overdue > 0.009).length} customers, ${rows.filter(r => r.overLimit).length} over limit</small></div>
     </dl>`;
 }
+function fillFilterSelects(rows) {
+  const months = [...new Set(rows.filter(r => r.oldest).map(r => r.oldest.dm))].sort();
+  const days = [...new Set(rows.map(r => String(r.c.creditDays ?? "none")))].sort((a, b) => (a === "none") - (b === "none") || a - b);
+  $("#fMonth").innerHTML = `<option value="">All</option>` + months.map(m => `<option value="${m}" ${S.fMonth === m ? "selected" : ""}>${mShort(m)}</option>`).join("");
+  $("#fDays").innerHTML = `<option value="">All</option>` + days.map(d => `<option value="${d}" ${S.fDays === d ? "selected" : ""}>${d === "none" ? "Not set" : d + " days"}</option>`).join("");
+  $("#fRem").value = S.fRem;
+}
 function sheet(rows) {
-  const c = {all: rows.length, overdue: 0, pending: 0, cleared: 0, limit: rows.filter(r => r.overLimit).length}; rows.forEach(r => c[stateOf(r)]++);
-  const nm = {all: "All", overdue: "Overdue", limit: "Over limit", pending: "Pending", cleared: "Cleared"};
-  $("#chips").innerHTML = Object.keys(nm).map(k => `<button class="chip ${k === "overdue" ? "od" : ""} ${S.filter === k ? "on" : ""}" data-f="${k}">${nm[k]}<b>${c[k]}</b></button>`).join("");
+  const counts = Object.fromEntries(Object.keys(CHIPS).map(k => [k, rows.filter(chipTest[k]).length]));
+  $("#chips").innerHTML = Object.keys(CHIPS).map(k => `<button class="chip ${k === "overdue" ? "od" : ""} ${S.filter === k ? "on" : ""}" data-f="${k}">${CHIPS[k]}<b>${counts[k]}</b></button>`).join("");
+  fillFilterSelects(rows);
   if (!S.customers.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>Start your receivables sheet</h3><p>Add customers one by one or import them from Excel. Each month, unpaid amounts carry forward by themselves.</p><button class="btn" data-act="add">Add customer</button><button class="btn ghost" data-act="import">Import from Excel</button>${LIVE ? "" : `<button class="btn ghost" data-act="sample">Try with sample data</button>`}</div>`; return; }
-  const q = S.q.toLowerCase();
-  const list = rows.filter(r => (S.filter === "all" || (S.filter === "limit" ? r.overLimit : stateOf(r) === S.filter)) && (!q || [r.c.name, r.c.contact, r.remarks].join(" ").toLowerCase().includes(q)))
-    .sort({overdue: (a, b) => b.overdue - a.overdue || b.balance - a.balance, balance: (a, b) => b.balance - a.balance, name: (a, b) => a.c.name.localeCompare(b.c.name)}[S.sort]);
-  if (!list.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>No customer matches</h3><p>Change the filter or search.</p></div>`; return; }
+  const list = applyFilters(rows);
+  if (!list.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>No customer matches</h3><p>Change the filters or search.</p></div>`; return; }
   const v = n => n == null || n === "" ? "" : fmt(n);
   const t = k => fz(list.reduce((s, r) => s + (+r[k] || 0), 0));
-  $("#sheetWrap").innerHTML = `<table><thead><tr><th>#</th><th>Customer</th><th class="n">Carried forward</th><th class="n">New dues</th><th class="n">Total due</th><th class="n">Expected</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Overdue</th><th class="n">Credit days</th><th class="n">Credit limit</th><th>Remarks</th></tr></thead><tbody>
+  const mb = monthsBack(S.month, 18);
+  const opts = sel => mb.map(m => `<option value="${m}" ${m === sel ? "selected" : ""}>${mShort(m)}</option>`).join("") + (mb.includes(sel) ? "" : `<option value="${sel}" selected>${mShort(sel)}</option>`);
+  const th = (k, label, cls = "") => `<th class="sortable ${cls} ${S.sortKey === k ? "on" : ""}" data-sort="${k}">${label}${S.sortKey === k ? `<span class="arr">${S.sortDir > 0 ? "▲" : "▼"}</span>` : ""}</th>`;
+  $("#sheetWrap").innerHTML = `<table><thead><tr><th>#</th>${th("name", "Customer")}${th("carried", "Carried forward", "n")}${th("dues", "New dues", "n")}${th("dueMonth", "Dues month")}${th("totalDue", "Total outstanding", "n")}${th("expected", "Expected", "n")}${th("received", "Received", "n")}${th("short", "Short of expected", "n")}${th("carryNext", "Carry forward", "n")}${th("oldest", "Oldest due")}${th("overdue", "Above credit days", "n")}${th("creditDays", "Credit days", "n")}${th("creditLimit", "Credit limit", "n")}${th("remarks", "Remarks")}</tr></thead><tbody>
   ${list.map((r, i) => `<tr data-id="${r.c.id}" class="${r.overdue > 0.009 ? "od" : ""}"><td class="muted">${i + 1}</td>
     <td class="party">${esc(r.c.name)}${r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : ""}<small>${esc(r.c.contact || "")}</small></td>
     <td class="n">${cr(r.carried)}</td>
     <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="dues" inputmode="decimal" value="${v(r.e.dues)}" aria-label="New dues"></td>
+    <td class="edit"><select class="cell" data-id="${r.c.id}" data-f="dueMonth" aria-label="Dues month">${opts(r.dueMonth)}</select></td>
     <td class="n"><b>${cr(r.totalDue)}</b></td>
-    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="expected" inputmode="decimal" value="${v(r.expected)}" aria-label="Expected"></td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="expected" inputmode="decimal" value="${v(r.expected)}" aria-label="Expected" style="font-weight:600"></td>
     <td class="n green">${fz(r.received)}<button class="addpay" data-pay="${r.c.id}" title="Record payment">+</button></td>
-    <td class="n ${r.overdue > 0.009 ? "red" : ""}"><b>${cr(r.balance)}</b></td>
+    <td class="n short">${r.short > 0.009 ? fmt(r.short) : r.expected > 0 ? `<span class="green">Done</span>` : ""}</td>
+    <td class="n"><b>${cr(r.carryNext)}</b></td>
+    <td style="white-space:nowrap">${r.oldest ? `${mShort(r.oldest.dm)}<span class="age ${r.oldest.late ? "red" : ""}">${r.oldest.age} days${r.c.creditDays != null ? " of " + r.c.creditDays : ""}</span>` : `<span class="muted">–</span>`}</td>
     <td class="n red">${r.overdue > 0.009 ? `<b>${fmt(r.overdue)}</b>` : ""}</td>
     <td class="edit"><input class="cell sm" data-id="${r.c.id}" data-f="creditDays" inputmode="numeric" value="${r.c.creditDays ?? ""}" aria-label="Credit days"></td>
     <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="creditLimit" inputmode="decimal" value="${v(r.c.creditLimit)}" aria-label="Credit limit"></td>
     <td class="edit"><input class="cell txt" data-id="${r.c.id}" data-f="remarks" value="${esc(r.remarks)}" placeholder="Add remark" aria-label="Remarks"></td></tr>`).join("")}
-  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("carried")}</td><td class="n">${t("dues")}</td><td class="n">${t("totalDue")}</td><td class="n">${t("expected")}</td><td class="n">${t("received")}</td><td class="n">${t("balance")}</td><td class="n red">${t("overdue")}</td><td></td><td></td><td></td></tr></tfoot></table>`;
+  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("carried")}</td><td class="n">${t("dues")}</td><td></td><td class="n">${t("totalDue")}</td><td class="n">${t("expected")}</td><td class="n">${t("received")}</td><td class="n">${t("short")}</td><td class="n">${t("carryNext")}</td><td></td><td class="n red">${t("overdue")}</td><td></td><td></td><td></td></tr></tfoot></table>`;
 }
 async function saveCell(inp) {
   const cid = inp.dataset.id, f = inp.dataset.f, c = S.customers.find(x => x.id === cid); if (!c) return;
-  const val = f === "remarks" ? inp.value.trim() : num(inp.value);
-  if (f !== "remarks" && inp.value.trim() !== "" && val == null) { toast("Enter a number", true); return; }
+  const txt = f === "remarks" || f === "dueMonth", val = txt ? inp.value.trim() : num(inp.value);
+  if (!txt && inp.value.trim() !== "" && val == null) { toast("Enter a number", true); return; }
   try {
     if (f === "creditDays" || f === "creditLimit") { if ((c[f] ?? null) === val) return; await store.update("customers", cid, {[f]: val}); }
-    else { const e = entryOf(cid, S.month); if (((e || {})[f] ?? (f === "remarks" ? "" : null)) === val) return;
-      await store.upsert("entries", {...(e || {id: entryId(cid, S.month), customerId: cid, month: S.month, dues: null, expected: null, remarks: ""}), customer: c.name, [f]: val, by: me.name, at: Date.now()}); }
+    else { const e = entryOf(cid, S.month); if (((e || {})[f] ?? (f === "remarks" ? "" : f === "dueMonth" ? S.month : null)) === val) return;
+      await store.upsert("entries", {...(e || {id: entryId(cid, S.month), customerId: cid, month: S.month, dues: null, dueMonth: S.month, expected: null, remarks: ""}), customer: c.name, [f]: val, by: me.name, at: Date.now()}); }
     toast("Saved");
   } catch (err) { toast("Not saved: " + err.message, true); }
 }
@@ -357,9 +411,9 @@ function openDrawer(id) {
     <label>Mode<select name="mode">${["Bank transfer", "Online transfer", "Cash", "Cheque", "PDC cheque", "Card"].map(m => `<option>${m}</option>`).join("")}</select></label>
     <label>Reference / cheque no.<input name="ref"></label>
     <label class="chq" hidden>Cheque date<input name="chequeDate" type="date"></label>
-    <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn green" type="submit">Record payment</button><button class="btn ghost" type="button" id="fillBal">Fill full balance</button></div></form></div>
+    <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn green" type="submit">Record payment</button><button class="btn ghost" type="button" id="fillBal">Fill expected amount</button></div></form></div>
   <div class="dsec"><details open><summary>Payments</summary><div id="dPays"></div></details></div>
-  <div class="dsec"><details><summary>Month by month</summary><div id="dHist"></div></details></div>
+  <div class="dsec"><details open><summary>Unpaid dues by month</summary><div id="dHist"></div></details></div>
   <div class="dsec"><details><summary>Customer details</summary><form id="editForm" class="g2">
     <label class="full">Customer name<input name="name" required value="${esc(c.name)}"></label>
     <label>Credit days approved<input name="creditDays" inputmode="numeric" value="${c.creditDays ?? ""}"></label>
@@ -375,21 +429,20 @@ function refreshDrawer() {
   $("#dName").innerHTML = esc(c.name) + (r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : "");
   $("#dSub").textContent = [c.creditDays != null ? c.creditDays + " days credit" : "", c.creditLimit ? "limit AED " + fmt(c.creditLimit) : "", c.contact].filter(Boolean).join(", ");
   $("#dFig").innerHTML = `<dl class="dfigs"><div><dt>Carried forward</dt><dd>${cr(r.carried)}</dd></div><div><dt>New dues</dt><dd>${fmt(r.dues)}</dd></div><div><dt>Received (${mLabel(S.month).split(" ")[0]})</dt><dd class="green">${fmt(r.received)}</dd></div>
-    <div><dt>Balance</dt><dd>${cr(r.balance)}</dd></div><div class="${r.overdue > 0.009 ? "hot" : ""}"><dt>Overdue</dt><dd>${fmt(r.overdue)}</dd></div><div><dt>Expected</dt><dd>${r.expected != null ? fmt(r.expected) : "–"}</dd></div></dl>`;
-  const phone = (c.contact || "").replace(/\D/g, "").replace(/^0/, "971"), amt = r.overdue > 0.009 ? r.overdue : r.balance;
+    <div><dt>Expected</dt><dd>${r.expected != null ? fmt(r.expected) : "–"}</dd></div><div class="${r.overdue > 0.009 ? "hot" : ""}"><dt>Above credit days</dt><dd>${fmt(r.overdue)}</dd></div><div><dt>Carry forward</dt><dd>${cr(r.carryNext)}</dd></div></dl>`;
+  const phone = (c.contact || "").replace(/\D/g, "").replace(/^0/, "971"), amt = r.overdue > 0.009 ? r.overdue : r.carryNext;
   const msg = `Dear ${c.name},\n\nGreetings from ${COMPANY}.\n\nAs per our records, AED ${fmt(amt)} is ${r.overdue > 0.009 ? "overdue" : "due"} on your account. Kindly arrange the payment at the earliest.\n\nIf already paid, please share the payment details so we can update our records.\n\nThank you.`;
   $("#dActs").innerHTML = (phone.length >= 9 && amt > 0.009 ? `<a class="btn green sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}">WhatsApp reminder</a>` : "") + (phone ? ` <a class="btn ghost sm" href="tel:+${phone}">Call</a>` : "");
   const pays = S.payments.filter(x => x.customerId === c.id).sort((a, b) => b.date.localeCompare(a.date));
   $("#dPays").innerHTML = pays.length ? pays.map(x => `<div class="item"><div>${x.bounced ? `<span class="tag t-bounced">Bounced</span>` : ""}${x.mode === "PDC cheque" ? `<span class="tag t-pdc">PDC</span>` : ""}<b>${fDate(x.date)}</b>, ${esc(x.mode)}${x.ref ? ", " + esc(x.ref) : ""}
       <div class="sub">${x.chequeDate ? `Cheque date ${fDate(x.chequeDate)}. ` : ""}Recorded by ${esc(x.by || "–")}</div></div><div class="amt ${x.bounced ? "red" : "green"}">${fmt(x.amount)}</div>
       <div class="ops">${!x.bounced && /cheque/i.test(x.mode) ? `<button class="btn sm ghost" data-bounce="${x.id}">Mark bounced</button>` : ""}<button class="btn sm ghost" data-delpay="${x.id}">Delete</button></div></div>`).join("") : `<p class="muted">No payments yet.</p>`;
-  const months = [...new Set([...S.entries.filter(e => e.customerId === c.id).map(e => e.month), ...S.payments.filter(p => p.customerId === c.id).map(p => p.date.slice(0, 7))])].sort().reverse().slice(0, 12);
-  $("#dHist").innerHTML = months.length ? months.map(m => { const h = calc(c, m); return `<div class="item ${h.overdue > 0.009 ? "od" : ""}"><div><b>${mLabel(m)}</b><div class="sub">Dues ${fmt(h.totalDue)}, received ${fmt(h.received)}${h.remarks ? ", " + esc(h.remarks) : ""}</div></div><div class="amt">${cr(h.balance)}</div></div>`; }).join("") : `<p class="muted">No history yet.</p>`;
+  $("#dHist").innerHTML = r.open.length ? r.open.slice().reverse().map(o => `<div class="item ${o.late ? "od" : ""}"><div><b>${mLabel(o.dm)}</b> ${o.late ? `<span class="tag t-od">Above credit days</span>` : ""}<div class="sub">${o.age} days old${c.creditDays != null ? `, credit allowed ${c.creditDays} days` : ""}</div></div><div class="amt">${fmt(o.amt)}</div></div>`).join("") : `<p class="muted">Nothing unpaid.</p>`;
 }
 function wire(c) {
   $("#dClose").onclick = closeDrawer;
   const pf = $("#payForm"); pf.mode.onchange = () => pf.querySelector(".chq").hidden = !/cheque/i.test(pf.mode.value);
-  $("#fillBal").onclick = () => pf.amount.value = Math.max(0, calc(c, S.month).balance).toFixed(2);
+  $("#fillBal").onclick = () => { const r = calc(c, S.month); pf.amount.value = Math.max(0, r.short ?? r.carryNext).toFixed(2); };
   pf.onsubmit = async e => { e.preventDefault(); const amount = num(pf.amount.value); if (!(amount > 0)) return toast("Enter an amount above zero", true);
     try { await store.upsert("payments", {id: newId(), customerId: c.id, customer: c.name, amount, date: pf.date.value, mode: pf.mode.value, ref: pf.ref.value.trim(), chequeDate: /cheque/i.test(pf.mode.value) ? pf.chequeDate.value || null : null, by: me.name, at: Date.now(), bounced: false});
       pf.amount.value = ""; pf.ref.value = ""; toast(`Payment of AED ${fmt(amount)} recorded`); } catch (err) { toast(err.message, true); } };
@@ -409,11 +462,22 @@ $("#addDlg").addEventListener("close", async () => {
   if (S.customers.some(c => normName(c.name) === normName(name))) return toast(`${name} already exists`, true);
   const c = {id: newId(), name, creditDays: num(f.creditDays.value), creditLimit: num(f.creditLimit.value), contact: f.contact.value.trim(), createdAt: Date.now(), by: me.name};
   const items = [["customers", c]];
-  if (f.dues.value || f.expected.value || f.remarks.value) items.push(["entries", {id: entryId(c.id, S.month), customerId: c.id, customer: name, month: S.month, dues: num(f.dues.value), expected: num(f.expected.value), remarks: f.remarks.value.trim(), by: me.name, at: Date.now()}]);
+  if (f.dues.value || f.expected.value || f.remarks.value) items.push(["entries", {id: entryId(c.id, S.month), customerId: c.id, customer: name, month: S.month, dues: num(f.dues.value), dueMonth: f.dueMonth.value || S.month, expected: num(f.expected.value), remarks: f.remarks.value.trim(), by: me.name, at: Date.now()}]);
   try { await store.upsertMany(items); toast("Customer added"); } catch (err) { toast(err.message, true); }
 });
 
 /* ---------- Excel import ---------- */
+function toMonth(v, fb) {
+  if (v == null || v === "") return fb;
+  if (v instanceof Date && !isNaN(v)) return isoOf(new Date(v.getTime() + 12 * 36e5)).slice(0, 7);
+  if (typeof v === "number" && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 7);
+  const t = String(v).trim(); let m = t.match(/^(\d{4})[-\/](\d{1,2})/); if (m) return `${m[1]}-${pad(m[2])}`;
+  m = t.match(/^(\d{1,2})[-\/.](\d{4})$/); if (m) return `${m[2]}-${pad(m[1])}`;
+  m = t.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/); if (m) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}`;
+  const mon = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].findIndex(x => t.toLowerCase().startsWith(x));
+  if (mon >= 0) { const y = (t.match(/(\d{4})|'?(\d{2})\s*$/) || []); const yr = y[1] || (y[2] ? "20" + y[2] : fb.slice(0, 4)); return `${yr}-${pad(mon + 1)}`; }
+  return fb;
+}
 let IMP = null;
 function openImport() { const f = $("#importForm"); f.reset(); f.month.value = S.month; IMP = null; $("#impPreview").innerHTML = ""; $("#impGo").disabled = true; $("#importDlg").showModal(); }
 function planImport(aoa, m) {
@@ -422,7 +486,7 @@ function planImport(aoa, m) {
   const head = aoa[h].map(c => String(c ?? "").trim().toUpperCase());
   const col = (...res) => { for (const re of res) { const i = head.findIndex(x => re.test(x)); if (i >= 0) return i; } return -1; };
   const C = {name: col(/CUSTOMER|PARTY/), dues: col(/^DUES?$|DUES|ACTUAL DUE|AMOUNT DUE/), prev: col(/PREVIOUS/), exp: col(/EXPECTED/), days: col(/CREDIT DAYS|PAYMENT DAYS|^DAYS/), limit: col(/LIMIT/),
-    remarks: col(/REMARK/, /STATUS/), contact: col(/CONTACT|PHONE|MOBILE/), rec: col(/RECEIVED/)};
+    dueMonth: col(/DUE MONTH|DUES MONTH|MONTH OF DUE|BILL MONTH|^MONTH$/), remarks: col(/REMARK/, /STATUS/), contact: col(/CONTACT|PHONE|MOBILE/), rec: col(/RECEIVED/)};
   const g = (r, i) => i < 0 ? null : r[i];
   const byName = new Map(S.customers.map(c => [normName(c.name), c]));
   const out = new Map(), items = [], now = Date.now(), sm = {newC: 0, oldC: 0, dues: 0, exp: 0, pay: 0, rec: 0};
@@ -439,8 +503,9 @@ function planImport(aoa, m) {
     c = {...c, ...(isNaN(days) ? {} : {creditDays: days}), ...(limit != null ? {creditLimit: limit} : {}), ...(contact ? {contact} : {})};
     out.set(key, c);
     const dues = pdc ? bracket : (num(g(r, C.dues)) ?? num(g(r, C.prev))), exp = num(g(r, C.exp)), remarks = String(g(r, C.remarks) ?? "").trim();
-    const prevE = entryOf(c.id, m) || {id: entryId(c.id, m), customerId: c.id, month: m, dues: null, expected: null, remarks: ""};
-    items.push(["entries", {...prevE, customer: c.name, ...(dues != null ? {dues} : {}), ...(exp != null ? {expected: exp} : {}), ...(remarks ? {remarks} : {}), by: me.name, at: now}]);
+    const prevE = entryOf(c.id, m) || {id: entryId(c.id, m), customerId: c.id, month: m, dues: null, dueMonth: m, expected: null, remarks: ""};
+    const dm = toMonth(g(r, C.dueMonth), prevE.dueMonth || m);
+    items.push(["entries", {...prevE, customer: c.name, dueMonth: dm, ...(dues != null ? {dues} : {}), ...(exp != null ? {expected: exp} : {}), ...(remarks ? {remarks} : {}), by: me.name, at: now}]);
     sm.dues += dues || 0; sm.exp += exp || 0;
     const rec = pdc ? bracket : num(g(r, C.rec));
     if (rec > 0 && !S.payments.some(p => p.customerId === c.id && r2(p.amount) === rec && inMonth(p.date, m) && p.ref === "Excel import")) {
@@ -454,7 +519,7 @@ async function previewImport() {
   const f = $("#importForm"), file = f.file.files[0]; $("#impGo").disabled = true; IMP = null; if (!file) return;
   try {
     if (typeof XLSX === "undefined") throw new Error("Excel reader didn't load. Check the internet connection.");
-    const wb = XLSX.read(await file.arrayBuffer(), {type: "array"});
+    const wb = XLSX.read(await file.arrayBuffer(), {type: "array", cellDates: true});
     const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1, raw: true, defval: null});
     IMP = planImport(aoa, f.month.value || S.month); const x = IMP.sm;
     $("#impPreview").innerHTML = `<b style="color:var(--ink)">Ready to import into ${mLabel(IMP.m)}</b><br>${x.newC} new customers, ${x.oldC} already in the app (will be updated)<br>Dues AED ${fmt(x.dues)}, expected AED ${fmt(x.exp)}${x.pay ? `<br>${x.pay} payments received, AED ${fmt(x.rec)}` : ""}`;
@@ -471,19 +536,19 @@ $("#impGo").onclick = async () => {
 };
 $("#tplBtn").onclick = () => {
   if (typeof XLSX === "undefined") return toast("Excel needs an internet connection.", true);
-  const head = ["CUSTOMER NAME", "DUES", "EXPECTED AMOUNT", "CREDIT DAYS APPROVED", "CREDIT LIMIT APPROVED", "REMARKS", "CONTACT NUMBER"];
-  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ["EXAMPLE CONTRACTING LLC", 25000, 15000, 60, 100000, "Cheque ready on 30th", "+971 50 000 0000"]]);
-  ws["!cols"] = head.map((x, i) => ({wch: i === 0 ? 36 : i === 5 ? 30 : 18})); XLSX.utils.book_append_sheet(wb, ws, "Receivables"); XLSX.writeFile(wb, "RBM Receivables template.xlsx");
+  const head = ["CUSTOMER NAME", "DUES", "DUE MONTH", "EXPECTED AMOUNT", "CREDIT DAYS APPROVED", "CREDIT LIMIT APPROVED", "REMARKS", "CONTACT NUMBER"];
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ["EXAMPLE CONTRACTING LLC", 25000, "Jul 2026", 15000, 60, 100000, "Cheque ready on 30th", "+971 50 000 0000"]]);
+  ws["!cols"] = head.map((x, i) => ({wch: i === 0 ? 36 : i === 6 ? 30 : 18})); XLSX.utils.book_append_sheet(wb, ws, "Receivables"); XLSX.writeFile(wb, "RBM Receivables template.xlsx");
 };
 
 /* ---------- Excel download ---------- */
 function exportExcel() {
   if (typeof XLSX === "undefined") return toast("Excel download needs an internet connection.", true);
   const rows = S.customers.map(c => calc(c, S.month)).sort((a, b) => a.c.name.localeCompare(b.c.name)), t = k => r2(rows.reduce((s, r) => s + (+r[k] || 0), 0));
-  const head = ["SL.NO", "CUSTOMER NAME", "CARRIED FORWARD", "NEW DUES", "TOTAL DUE", "EXPECTED AMOUNT", "RECEIVED", "BALANCE", "OVERDUE", "CREDIT DAYS APPROVED", "CREDIT LIMIT APPROVED", "REMARKS", "UPDATED BY", "CONTACT NUMBER"];
-  const body = rows.map((r, i) => [i + 1, r.c.name, r.carried, r.dues, r.totalDue, r.expected, r.received, r.balance, r.overdue || null, r.c.creditDays, r.c.creditLimit, r.remarks, r.by, r.c.contact]);
-  body.push([], [null, "TOTAL", t("carried"), t("dues"), t("totalDue"), t("expected"), t("received"), t("balance"), t("overdue")]);
-  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ...body]); ws["!cols"] = head.map((x, i) => ({wch: i === 1 ? 40 : i === 11 ? 30 : 15}));
+  const head = ["SL.NO", "CUSTOMER NAME", "CARRIED FORWARD", "NEW DUES", "DUE MONTH", "TOTAL OUTSTANDING", "EXPECTED AMOUNT", "RECEIVED", "SHORT OF EXPECTED", "CARRY FORWARD", "OLDEST DUE MONTH", "DAYS", "ABOVE CREDIT DAYS", "CREDIT DAYS APPROVED", "CREDIT LIMIT APPROVED", "REMARKS", "UPDATED BY", "CONTACT NUMBER"];
+  const body = rows.map((r, i) => [i + 1, r.c.name, r.carried, r.dues || null, r.dues ? mShort(r.dueMonth) : "", r.totalDue, r.expected, r.received, r.short, r.carryNext, r.oldest ? mShort(r.oldest.dm) : "", r.oldest ? r.oldest.age : null, r.overdue || null, r.c.creditDays, r.c.creditLimit, r.remarks, r.by, r.c.contact]);
+  body.push([], [null, "TOTAL", t("carried"), t("dues"), null, t("totalDue"), t("expected"), t("received"), t("short"), t("carryNext"), null, null, t("overdue")]);
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ...body]); ws["!cols"] = head.map((x, i) => ({wch: i === 1 ? 40 : i === 15 ? 30 : 14}));
   XLSX.utils.book_append_sheet(wb, ws, "Receivables");
   const names = Object.fromEntries(S.customers.map(c => [c.id, c.name]));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["DATE", "CUSTOMER", "AMOUNT", "MODE", "REFERENCE", "CHEQUE DATE", "BOUNCED", "RECORDED BY"], ...S.payments.filter(x => inMonth(x.date, S.month)).sort((a, b) => a.date.localeCompare(b.date)).map(x => [x.date, names[x.customerId] || x.customer || "", x.amount, x.mode, x.ref, x.chequeDate, x.bounced ? "YES" : "", x.by])]), "Payments");
@@ -494,10 +559,10 @@ function exportExcel() {
 function sample() {
   const m = k => monthAdd(thisMonth(), k), now = Date.now(), items = [];
   const C = (name, creditDays, creditLimit, contact) => { const id = newId(); items.push(["customers", {id, name, creditDays, creditLimit, contact, createdAt: now, by: "Demo"}]); return id; };
-  const E = (cid, k, dues, expected, remarks = "") => items.push(["entries", {id: entryId(cid, m(k)), customerId: cid, month: m(k), dues, expected, remarks, by: "Demo", at: now}]);
+  const E = (cid, k, dues, expected, remarks = "", dk = k) => items.push(["entries", {id: entryId(cid, m(k)), customerId: cid, month: m(k), dues, dueMonth: m(dk), expected, remarks, by: "Demo", at: now}]);
   const P = (cid, k, day, amount, mode) => items.push(["payments", {id: newId(), customerId: cid, date: `${m(k)}-${pad(day)}`, amount, mode, ref: "", chequeDate: null, by: "Demo", at: now, bounced: false}]);
   const a = C("Sample Contracting LLC", 30, 50000, "+971 50 000 0001"); E(a, -1, 18000, 18000); P(a, -1, 20, 10000, "Bank transfer"); E(a, 0, 12000, 20000, "Balance promised end of month");
-  const b = C("Demo Interiors LLC", 60, 40000, "+971 55 000 0002"); E(b, -2, 45000, 20000); P(b, -1, 5, 20000, "PDC cheque"); E(b, 0, 6000, 10000, "Follow up");
+  const b = C("Demo Interiors LLC", 60, 40000, "+971 55 000 0002"); E(b, -2, 45000, 20000, "", -3); P(b, -1, 5, 20000, "PDC cheque"); E(b, 0, 6000, 10000, "Follow up");
   const c = C("Example Technical Services", 30, 20000, "+971 56 000 0003"); E(c, 0, 7400, 7400, "Received online transfer"); P(c, 0, 2, 7400, "Online transfer");
   const d = C("Model Fitout Works", 45, 30000, "+971 58 000 0005"); E(d, 0, 9800, 5000);
   store.upsertMany(items).then(() => toast("Sample data loaded"));
@@ -512,7 +577,11 @@ $("#mNext").onclick = () => { S.month = monthAdd(S.month, 1); render(); };
 $("#mToday").onclick = () => { S.month = thisMonth(); render(); };
 $("#mPick").onchange = e => { if (e.target.value) { S.month = e.target.value; render(); } };
 $("#q").oninput = e => { S.q = e.target.value; render(); };
-$("#sort").onchange = e => { S.sort = e.target.value; render(); };
+$("#sheetWrap").addEventListener("click", e => { const h = e.target.closest("th[data-sort]"); if (!h) return; const k = h.dataset.sort; if (S.sortKey === k) S.sortDir *= -1; else { S.sortKey = k; S.sortDir = ["name", "remarks", "dueMonth"].includes(k) ? 1 : -1; } render(); });
+$("#fMonth").onchange = e => { S.fMonth = e.target.value; render(); };
+$("#fDays").onchange = e => { S.fDays = e.target.value; render(); };
+$("#fRem").onchange = e => { S.fRem = e.target.value; render(); };
+$("#fClear").onclick = () => { Object.assign(S, {filter: "all", q: "", fMonth: "", fDays: "", fRem: ""}); $("#q").value = ""; render(); };
 $("#chips").onclick = e => { const b = e.target.closest("[data-f]"); if (b) { S.filter = b.dataset.f; render(); } };
 $("#exportBtn").onclick = exportExcel;
 $("#sheetWrap").addEventListener("change", e => { if (e.target.classList.contains("cell")) saveCell(e.target); });
@@ -520,7 +589,7 @@ $("#sheetWrap").addEventListener("keydown", e => { if (e.key === "Enter" && e.ta
 $("#sheetWrap").addEventListener("focusout", () => setTimeout(() => { if (deferred && !($("#sheetWrap").contains(document.activeElement) && document.activeElement.classList.contains("cell"))) { deferred = false; render(); } }, 50));
 $("#main").addEventListener("click", e => {
   const act = e.target.closest("[data-act]")?.dataset.act;
-  if (act === "add") { $("#addForm").reset(); return $("#addDlg").showModal(); }
+  if (act === "add") { $("#addForm").reset(); $("#addDueMonth").innerHTML = monthsBack(S.month, 18).map(m => `<option value="${m}">${mShort(m)}</option>`).join(""); return $("#addDlg").showModal(); }
   if (act === "import") return openImport();
   if (act === "sample") return sample();
   const pay = e.target.closest("[data-pay]"); if (pay) { openDrawer(pay.dataset.pay); return $("#payForm").amount.focus(); }
@@ -531,21 +600,18 @@ $("#scrim").onclick = closeDrawer;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && S.open && !document.querySelector("dialog[open]")) closeDrawer(); });
 $$("[data-signout]").forEach(b => b.onclick = () => { try { localStorage.removeItem("rbm-session"); } catch (e) {} location.reload(); });
 
-/* ---------- start ---------- */
-if (LIVE) {
-  document.body.classList.add("live");
-  const enter = async (name, pw, remember) => { const s = new SheetStore(pw); await s.call({action: "ping"}); if (remember) try { localStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {} store = s; me = {name}; start(); };
-  $("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true; $("#lBtn").disabled = true;
-    try { await enter($("#lName").value.trim(), $("#lPass").value, true); }
-    catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\"." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
-    $("#lBtn").disabled = false; };
-  let saved = null; try { saved = JSON.parse(localStorage.getItem("rbm-session")); } catch (e) {}
-  if (saved) enter(saved.name, saved.pw, false).catch(() => { localStorage.removeItem("rbm-session"); show("login"); }); else show("login");
-} else {
-  store = new LocalStore(); $("#demoBar").hidden = false; me = {name: "Demo user"};
-  $("#demoReset").onclick = () => { if (confirm("Clear all demo data in this browser?")) { closeDrawer(); store.reset(); } };
-  start();
-}
+/* ---------- start: always ask for login ---------- */
+document.body.classList.add("live");
+const enter = async (name, pw, remember) => { const st = new SheetStore(pw); await st.call({action: "ping"}); if (remember) try { localStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {} store = st; me = {name}; start(); };
+$("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true;
+  if (!LIVE) { $("#lErr").textContent = "The Google Script link is missing. Paste it into SCRIPT_URL at the top of the script in index.html."; $("#lErr").hidden = false; return; }
+  $("#lBtn").disabled = true;
+  try { await enter($("#lName").value.trim(), $("#lPass").value, true); }
+  catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\"." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
+  $("#lBtn").disabled = false; };
+let saved = null; try { saved = JSON.parse(localStorage.getItem("rbm-session")); } catch (e) {}
+if (LIVE && saved) enter(saved.name, saved.pw, false).catch(() => { try { localStorage.removeItem("rbm-session"); } catch (e) {} show("login"); });
+else show("login");
 </script>
 </body>
 </html>
