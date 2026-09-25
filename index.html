@@ -106,6 +106,20 @@ body:not(.can-edit) .edit-only{display:none!important} body:not(.is-admin) .admi
 @media (max-width:640px){.wrap{padding:0 12px}.dfigs,.g2{grid-template-columns:1fr 1fr}.pct{font-size:44px}}
 @media (prefers-reduced-motion:reduce){.bar span{transition:none}}
 </style>
+<style>
+.cell{border:1px solid transparent;background:transparent;border-radius:4px;padding:5px 6px;width:100%;min-width:90px;text-align:right;font-family:var(--num);font-size:15.5px;font-variant-numeric:tabular-nums}
+.cell:hover{border-color:var(--line);background:var(--raised)}
+.cell:focus{border-color:var(--steel);background:var(--raised);outline:none}
+.cell.txt{text-align:left;font-family:var(--ui);font-size:14px;min-width:200px}
+.cell.sm{min-width:60px;width:70px}
+td.edit{padding:4px 6px}
+.addpay{border:1px solid var(--green);color:var(--green);background:transparent;border-radius:4px;font-size:12px;padding:1px 6px;margin-left:6px;cursor:pointer}
+tr.od .cell{color:var(--ink)}
+.hint{font-size:13px;color:var(--muted);margin:-6px 0 10px}
+.t-limit{background:var(--amber-soft);color:var(--amber)}
+tbody tr.od,tbody tr.od:hover{background:var(--red-soft)}
+td.party{position:sticky;left:0;background:var(--surface);z-index:1} tbody tr.od td.party{background:var(--red-soft)}
+</style>
 </head>
 <body>
 <div id="demoBar" class="demo" hidden>
@@ -116,7 +130,7 @@ body:not(.can-edit) .edit-only{display:none!important} body:not(.is-admin) .admi
 <section id="login" class="gate" hidden>
   <form id="loginForm" class="box">
     <div><h1>RBM Receivables</h1><p>Reality Building Materials Trading LLC</p></div>
-    <label>Your name<input id="lName" required autocomplete="name" placeholder="Shown on payments you record"></label>
+    <label>Your name<input id="lName" required autocomplete="name" placeholder="Shown on updates you make"></label>
     <label>Password<input type="password" id="lPass" required autocomplete="current-password"></label>
     <button class="btn" type="submit" id="lBtn">Sign in</button>
     <p id="lErr" class="red" hidden></p>
@@ -126,48 +140,50 @@ body:not(.can-edit) .edit-only{display:none!important} body:not(.is-admin) .admi
 <main id="main" class="wrap" hidden>
   <header class="top">
     <div class="brand"><div class="mark">RBM</div><div><h1>Receivables</h1><p>Reality Building Materials Trading LLC</p></div></div>
-    <div class="who"><span id="whoName"></span><span id="sync" class="role">Live</span><button class="btn ghost sm live-only" data-signout>Sign out</button></div>
+    <div class="who"><span id="whoName"></span><span id="sync" class="role live-only">Live</span><button class="btn ghost sm live-only" data-signout>Sign out</button></div>
   </header>
   <div class="monthbar">
     <div class="mnav"><button class="arrow" id="mPrev" aria-label="Previous month">‹</button><h2 id="mTitle"></h2><button class="arrow" id="mNext" aria-label="Next month">›</button><input type="month" id="mPick" aria-label="Pick month"></div>
     <button class="btn ghost" id="mToday">This month</button>
   </div>
   <section class="strip" id="strip"></section>
-  <nav class="tabs">
-    <button data-tab="sheet" class="on">Monthly sheet</button><button data-tab="log">Payments received</button><button data-tab="parties">Parties</button>
-  </nav>
+  <nav class="tabs"><button data-tab="sheet" class="on">Monthly sheet</button><button data-tab="log">Payments received</button></nav>
+
   <section id="tab-sheet">
     <div class="toolbar">
-      <input type="search" id="q" placeholder="Search party, phone or status"><div id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div><span class="sp"></span>
-      <select id="sort" aria-label="Sort"><option value="overdue">Most overdue first</option><option value="balance">Highest balance first</option><option value="name">Party A–Z</option></select>
-      <button class="btn ghost edit-only" data-act="import">Import Excel</button><button class="btn ghost" id="exportBtn">Download Excel</button><button class="btn edit-only" data-act="addParty">Add party</button>
+      <input type="search" id="q" placeholder="Search customer or remarks"><div id="chips" style="display:flex;gap:6px;flex-wrap:wrap"></div><span class="sp"></span>
+      <select id="sort" aria-label="Sort"><option value="overdue">Most overdue first</option><option value="balance">Highest balance first</option><option value="name">Customer A–Z</option></select>
+      <button class="btn ghost" data-act="import">Import Excel</button><button class="btn ghost" id="exportBtn">Download Excel</button><button class="btn" data-act="add">Add customer</button>
     </div>
+    <p class="hint">Type directly into New dues, Expected, Credit days, Credit limit and Remarks. It saves when you leave the box. Click a customer name to record a payment.</p>
     <div class="sheet" id="sheetWrap"></div>
   </section>
   <section id="tab-log" hidden><div class="toolbar"><span id="logSum" class="muted"></span></div><div class="sheet narrow" id="logWrap"></div></section>
-  <section id="tab-parties" hidden><div class="toolbar"><input type="search" id="pq" placeholder="Search parties"><span class="sp"></span><button class="btn ghost edit-only" data-act="import">Import Excel</button><button class="btn edit-only" data-act="addParty">Add party</button></div><div class="sheet narrow" id="partiesWrap"></div></section>
 </main>
 
 <div class="scrim" id="scrim" hidden></div>
 <aside class="drawer" id="drawer" hidden></aside>
 
-<dialog id="partyDlg"><h3>Add party</h3>
-  <form id="partyForm" method="dialog">
-    <label>Party name<input name="name" required></label>
+<dialog id="addDlg"><h3>Add customer</h3>
+  <form id="addForm" method="dialog">
+    <label>Customer name<input name="name" required></label>
     <div class="g2">
-      <label>Credit terms (days)<input name="terms" type="number" min="0" value="30"></label>
-      <label>Contact number<input name="contact" placeholder="+971 5x xxx xxxx"></label>
-      <label class="full">Email<input name="email" type="email"></label>
-      <label class="full" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input name="legal" type="checkbox" style="width:auto;margin:0">Under legal action</label>
+      <label>Credit days approved<input name="creditDays" inputmode="numeric" placeholder="e.g. 30"></label>
+      <label>Credit limit approved (AED)<input name="creditLimit" inputmode="decimal"></label>
+      <label>Dues this month (AED)<input name="dues" inputmode="decimal"></label>
+      <label>Expected this month (AED)<input name="expected" inputmode="decimal"></label>
+      <label class="full">Contact number<input name="contact" placeholder="+971 5x xxx xxxx"></label>
+      <label class="full">Remarks<input name="remarks"></label>
     </div>
-    <div class="dacts"><button class="btn ghost" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Save party</button></div>
+    <div class="dacts"><button class="btn ghost" value="cancel" formnovalidate>Cancel</button><button class="btn" value="ok">Add customer</button></div>
   </form>
 </dialog>
+
 <dialog id="importDlg" style="width:min(560px,94vw)"><h3>Import from Excel</h3>
   <form id="importForm" method="dialog">
-    <p class="muted" style="margin:0;font-size:14px">Upload your receivables sheet or the template. Parties already in the app are matched by name, so nothing is duplicated. Each row can have the party, an invoice (or opening balance) and an amount already received.</p>
+    <p class="muted" style="margin:0;font-size:14px">Columns it reads: Customer name, Dues, Expected amount, Credit days approved, Credit limit approved, Remarks. Contact number and Received are optional. Customers already in the app are matched by name and updated, never duplicated.</p>
     <label>Excel file<input type="file" name="file" accept=".xlsx,.xls,.csv"></label>
-    <label>Date to use when a row has no date<input type="date" name="date"></label>
+    <label>Import into month<input type="month" name="month"></label>
     <div id="impPreview" class="meta" style="font-size:14px"></div>
     <div class="dacts" style="flex-wrap:wrap"><button type="button" class="btn ghost" id="tplBtn">Download template</button><span class="sp"></span><button class="btn ghost" value="cancel" formnovalidate>Cancel</button><button class="btn" type="button" id="impGo" disabled>Import</button></div>
   </form>
@@ -176,8 +192,8 @@ body:not(.can-edit) .edit-only{display:none!important} body:not(.is-admin) .admi
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-/* ===== PASTE YOUR GOOGLE APPS SCRIPT WEB APP LINK HERE (see README) =====
-   While it starts with PASTE, the page runs in demo mode (data stays in this browser). */
+/* ===== PASTE YOUR GOOGLE APPS SCRIPT WEB APP LINK HERE (ends with /exec) =====
+   While it starts with PASTE, the page runs in demo mode. */
 const SCRIPT_URL = "PASTE_YOUR_SCRIPT_URL";
 const COMPANY = "Reality Building Materials Trading LLC";
 const LIVE = SCRIPT_URL.startsWith("https://script.google.com/");
@@ -194,32 +210,31 @@ const pad = n => String(n).padStart(2, "0");
 const isoOf = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const today = () => isoOf(new Date());
 const thisMonth = () => today().slice(0, 7);
-const addDays = (iso, n) => { const [y, m, d] = iso.split("-").map(Number); return isoOf(new Date(y, m - 1, d + (+n || 0))); };
-const daysBetween = (a, b) => Math.round((new Date(b + "T00:00") - new Date(a + "T00:00")) / 864e5);
 const monthAdd = (m, k) => { const [y, mo] = m.split("-").map(Number); const d = new Date(y, mo - 1 + k, 1); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; };
 const monthEnd = m => { const [y, mo] = m.split("-").map(Number); return `${m}-${pad(new Date(y, mo, 0).getDate())}`; };
 const mLabel = m => { const [y, mo] = m.split("-").map(Number); return new Date(y, mo - 1, 1).toLocaleString("en-US", {month: "long", year: "numeric"}); };
 const fDate = iso => iso ? new Date(iso + "T00:00").toLocaleDateString("en-GB", {day: "2-digit", month: "short", year: "numeric"}) : "–";
-const mkey = m => "m" + m.replace("-", "");
 const clean = o => JSON.parse(JSON.stringify(o));
-const total = a => r2(a.reduce((s, x) => s + (+x.amount || 0), 0));
-const num = v => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return isNaN(n) ? null : r2(n); };
+const total = (a, k = "amount") => r2(a.reduce((s, x) => s + (+x[k] || 0), 0));
+const num = v => { if (v == null || v === "") return null; if (typeof v === "number") return r2(v); const n = parseFloat(String(v).replace(/,/g, "").replace(/dr|cr|aed/ig, "")); return isNaN(n) ? null : r2(n); };
 const inMonth = (iso, m) => iso >= m + "-01" && iso <= monthEnd(m);
-function toast(msg, err) { const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : ""); clearTimeout(t._h); t._h = setTimeout(() => t.className = "", 2600); }
+const normName = s => String(s || "").toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+const entryId = (cid, m) => cid + "_" + m;
+function toast(msg, err) { const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : ""); clearTimeout(t._h); t._h = setTimeout(() => t.className = "", 2400); }
 function show(id) { ["login", "main"].forEach(x => $("#" + x).hidden = x !== id); }
 
-/* ---------- storage: demo (browser) or Firebase (live, shared) ---------- */
+/* ---------- storage ---------- */
+const COLS = ["customers", "entries", "payments"];
 class LocalStore {
-  constructor() { this.k = "rbm-receivables"; try { this.d = JSON.parse(localStorage.getItem(this.k)); } catch (e) {} this.d ||= {parties: {}, dues: {}, payments: {}}; this.subs = new Set(); }
-  snap() { return {parties: Object.values(this.d.parties), dues: Object.values(this.d.dues), payments: Object.values(this.d.payments)}; }
+  constructor() { this.k = "rbm-receivables-v3"; try { this.d = JSON.parse(localStorage.getItem(this.k)); } catch (e) {} this.d ||= {customers: {}, entries: {}, payments: {}}; this.subs = new Set(); }
+  snap() { return Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])])); }
   _save() { try { localStorage.setItem(this.k, JSON.stringify(this.d)); } catch (e) {} this.subs.forEach(f => f(this.snap())); }
   subscribe(cb) { this.subs.add(cb); cb(this.snap()); return () => this.subs.delete(cb); }
-  async add(col, o) { this.d[col][o.id] = clean(o); this._save(); }
-  async addMany(items) { items.forEach(([c, o]) => this.d[c][o.id] = clean(o)); this._save(); }
+  async upsert(col, o) { this.d[col][o.id] = {...(this.d[col][o.id] || {}), ...clean(o)}; this._save(); }
+  async upsertMany(items) { items.forEach(([c, o]) => this.d[c][o.id] = {...(this.d[c][o.id] || {}), ...clean(o)}); this._save(); }
   async update(col, id, patch) { Object.assign(this.d[col][id], clean(patch)); this._save(); }
-  async setMonthly(id, m, v) { const p = this.d.parties[id]; p.monthly ||= {}; p.monthly[mkey(m)] = clean(v); this._save(); }
   async remove(col, id) { delete this.d[col][id]; this._save(); }
-  reset() { this.d = {parties: {}, dues: {}, payments: {}}; this._save(); }
+  reset() { this.d = {customers: {}, entries: {}, payments: {}}; this._save(); }
 }
 class SheetStore {
   constructor(pw) { this.pw = pw; this.cb = null; this.busy = 0; }
@@ -231,356 +246,303 @@ class SheetStore {
   }
   async refresh() { try { const d = await this.call({action: "all"}); this.cb && this.cb(d); } catch (e) { toast("Couldn't load data: " + e.message, true); } }
   subscribe(cb) { this.cb = cb; this.refresh(); const t = setInterval(() => { if (!document.hidden && !document.querySelector("dialog[open]")) this.refresh(); }, 20000); return () => clearInterval(t); }
-  async add(col, o) { await this.call({action: "add", col, obj: clean(o)}); await this.refresh(); }
-  async addMany(items) { await this.call({action: "addMany", items: clean(items)}); await this.refresh(); }
+  async upsert(col, o) { await this.call({action: "upsertMany", items: [[col, clean(o)]]}); await this.refresh(); }
+  async upsertMany(items) { await this.call({action: "upsertMany", items: clean(items)}); await this.refresh(); }
   async update(col, id, patch) { await this.call({action: "update", col, id, patch: clean(patch)}); await this.refresh(); }
-  async setMonthly(id, m, v, quiet) { await this.call({action: "monthly", id, key: mkey(m), val: clean(v)}); if (!quiet) await this.refresh(); }
   async remove(col, id) { await this.call({action: "remove", col, id}); await this.refresh(); }
 }
 
-let store, me = null, unsub = null;
-const S = {parties: [], dues: [], payments: [], month: thisMonth(), filter: "all", q: "", pq: "", sort: "overdue", tab: "sheet", open: null};
-const canEdit = () => true, isAdmin = () => true;
+let store, me = null, unsub = null, deferred = false;
+const S = {customers: [], entries: [], payments: [], month: thisMonth(), filter: "all", q: "", sort: "overdue", tab: "sheet", open: null};
 
-/* ---------- engine: automatic carry-forward + overdue ----------
-   Every invoice has a due date (invoice date + credit days). Payments settle the oldest invoices first.
-   Whatever is unpaid at the end of a month is automatically the "carried forward" of the next month. */
-function duesOf(p) { return S.dues.filter(d => d.partyId === p.id).sort((a, b) => a.date.localeCompare(b.date) || (a.at || 0) - (b.at || 0)); }
-function paysOf(p) { return S.payments.filter(x => x.partyId === p.id && !x.bounced); }
-function rowFor(p, m) {
-  const start = m + "-01", end = monthEnd(m), asOf = end < today() ? end : today();
-  const dues = duesOf(p), pays = paysOf(p);
-  const carried = r2(total(dues.filter(d => d.date < start)) - total(pays.filter(x => x.date < start)));
-  const newAmt = total(dues.filter(d => inMonth(d.date, m))), received = total(pays.filter(x => inMonth(x.date, m)));
-  const totalDue = r2(carried + newAmt), balance = r2(totalDue - received);
-  let pool = total(pays.filter(x => x.date <= asOf)), overdue = 0, late = 0;
-  for (const d of dues.filter(d => d.date <= end)) {
-    const cover = Math.min(pool, +d.amount); pool = r2(pool - cover); const open = r2(d.amount - cover);
-    if (open > 0.009 && d.dueDate < asOf) { overdue += open; late = Math.max(late, daysBetween(d.dueDate, asOf)); }
-  }
-  const mm = (p.monthly || {})[mkey(m)] || {};
-  return {p, carried, newAmt, totalDue, received, balance, overdue: r2(Math.max(0, Math.min(overdue, balance))), late, expected: mm.expected ?? null, status: mm.status || "", by: mm.by || "", at: mm.at || null};
+/* ---------- engine ----------
+   Carried forward = all dues from earlier months minus all payments before this month (automatic, nothing to copy).
+   Payments clear the oldest amount first, so anything carried in from an earlier month and still unpaid is OVERDUE (red). */
+const entryOf = (cid, m) => S.entries.find(e => e.id === entryId(cid, m));
+function calc(c, m) {
+  const es = S.entries.filter(e => e.customerId === c.id), ps = S.payments.filter(p => p.customerId === c.id && !p.bounced);
+  const carried = r2(total(es.filter(e => e.month < m), "dues") - total(ps.filter(p => p.date < m + "-01")));
+  const e = entryOf(c.id, m) || {};
+  const dues = +e.dues || 0, received = total(ps.filter(p => inMonth(p.date, m)));
+  const totalDue = r2(carried + dues), balance = r2(totalDue - received);
+  const overdue = r2(Math.max(0, Math.min(carried - received, balance)));
+  const overLimit = +c.creditLimit > 0 && balance > +c.creditLimit;
+  return {c, e, carried, dues, received, totalDue, balance, overdue, overLimit, expected: e.expected ?? null, remarks: e.remarks || "", by: e.by || "", at: e.at || null};
 }
-function position(p) { // invoice-by-invoice, as of today
-  const t = today(); let pool = total(paysOf(p).filter(x => x.date <= t));
-  const list = duesOf(p).map(d => { const cover = Math.min(pool, +d.amount); pool = r2(pool - cover); const open = r2(d.amount - cover);
-    const st = open <= 0.009 ? "paid" : d.dueDate < t ? "od" : cover > 0 ? "part" : "due";
-    return {...d, open, st, days: st === "od" ? daysBetween(d.dueDate, t) : daysBetween(t, d.dueDate)}; });
-  return {list, outstanding: r2(total(duesOf(p)) - total(paysOf(p))), overdue: r2(list.filter(d => d.st === "od").reduce((s, d) => s + d.open, 0))};
-}
-const monthRows = () => S.parties.map(p => rowFor(p, S.month)).filter(r => Math.abs(r.carried) > 0.009 || r.newAmt || r.received || r.expected || r.status);
-const stateOf = r => r.p.legal ? "legal" : r.overdue > 0.009 ? "overdue" : r.balance > 0.009 ? "pending" : "cleared";
+const stateOf = r => r.overdue > 0.009 ? "overdue" : r.balance > 0.009 ? "pending" : "cleared";
 
 /* ---------- render ---------- */
 function render() {
   $("#mTitle").textContent = mLabel(S.month); $("#mPick").value = S.month;
-  const rows = monthRows(); strip(rows);
-  if (S.tab === "sheet") sheet(rows); if (S.tab === "log") log(); if (S.tab === "parties") parties();
+  const rows = S.customers.map(c => calc(c, S.month));
+  strip(rows);
+  if (S.tab === "sheet") { if ($("#sheetWrap").contains(document.activeElement) && document.activeElement.classList.contains("cell")) deferred = true; else sheet(rows); }
+  if (S.tab === "log") log();
   if (S.open) refreshDrawer();
 }
 function strip(rows) {
   const t = k => r2(rows.reduce((s, r) => s + (+r[k] || 0), 0));
   const due = t("totalDue"), rec = t("received"), od = t("overdue"), past = S.month < thisMonth();
-  const pct = due > 0 ? Math.min(100, rec / due * 100) : 0, odPct = due > 0 ? Math.min(100 - pct, od / due * 100) : 0;
-  const pdc = S.payments.filter(x => !x.bounced && x.mode === "PDC cheque" && (x.chequeDate || "") > today());
-  const exp = rows.some(r => r.expected != null) ? t("expected") : null;
-  $("#strip").innerHTML = `<div class="collect"><span class="pct">${pct.toFixed(1)}%</span><p>collected: <b>AED ${fmt(rec)}</b> received of <b>AED ${fmt(due)}</b> due in ${mLabel(S.month)}${exp != null ? `, expected AED ${fmt(exp)}` : ""}</p></div>
+  const pct = due > 0 ? Math.min(100, Math.max(0, rec / due * 100)) : 0, odPct = due > 0 ? Math.min(100 - pct, od / due * 100) : 0;
+  const exp = t("expected"), ol = rows.filter(r => r.overLimit).length;
+  $("#strip").innerHTML = `<div class="collect"><span class="pct">${pct.toFixed(1)}%</span><p>collected: <b>AED ${fmt(rec)}</b> received of <b>AED ${fmt(due)}</b> due in ${mLabel(S.month)}${exp ? `, expected AED ${fmt(exp)}` : ""}</p></div>
     <div class="bar" aria-hidden="true"><span style="width:${pct}%"></span><i style="left:${pct}%;width:${odPct}%"></i></div>
     <dl class="figs">
-      <div><dt>Carried in from earlier months</dt><dd>${fmt(t("carried"))}</dd></div>
-      <div><dt>New invoices this month</dt><dd>${fmt(t("newAmt"))}</dd></div>
+      <div><dt>Carried forward</dt><dd>${fmt(t("carried"))}</dd></div>
+      <div><dt>New dues this month</dt><dd>${fmt(t("dues"))}</dd></div>
       <div><dt>${past ? "Carried to next month" : "Still to collect"}</dt><dd>${fmt(t("balance"))}</dd></div>
-      <div class="r"><dt>Overdue ${past ? "at month end" : "today"}</dt><dd>${fmt(od)}</dd><small>${rows.filter(r => r.overdue > 0.009).length} parties</small></div>
-      <div class="b"><dt>PDCs in hand, not yet due</dt><dd>${fmt(total(pdc))}</dd><small>${pdc.length} cheque${pdc.length === 1 ? "" : "s"}</small></div>
+      <div class="r"><dt>Overdue</dt><dd>${fmt(od)}</dd><small>${rows.filter(r => r.overdue > 0.009).length} customers</small></div>
+      <div class="b"><dt>Over credit limit</dt><dd>${ol}</dd><small>customers</small></div>
     </dl>`;
 }
 function sheet(rows) {
-  const c = {all: rows.length, overdue: 0, pending: 0, cleared: 0, legal: 0}; rows.forEach(r => c[stateOf(r)]++);
-  const nm = {all: "All", overdue: "Overdue", pending: "Pending", cleared: "Cleared", legal: "Legal"};
+  const c = {all: rows.length, overdue: 0, pending: 0, cleared: 0, limit: rows.filter(r => r.overLimit).length}; rows.forEach(r => c[stateOf(r)]++);
+  const nm = {all: "All", overdue: "Overdue", limit: "Over limit", pending: "Pending", cleared: "Cleared"};
   $("#chips").innerHTML = Object.keys(nm).map(k => `<button class="chip ${k === "overdue" ? "od" : ""} ${S.filter === k ? "on" : ""}" data-f="${k}">${nm[k]}<b>${c[k]}</b></button>`).join("");
-  if (!S.parties.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>Start your receivables sheet</h3><p>Add a party, enter their invoices, and your accounts team records payments as they come in. Unpaid amounts roll into the next month by themselves.</p><button class="btn edit-only" data-act="addParty">Add first party</button><button class="btn ghost edit-only" data-act="import">Import from Excel</button>${LIVE ? "" : `<button class="btn ghost" data-act="sample">Try with sample data</button>`}</div>`; return; }
+  if (!S.customers.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>Start your receivables sheet</h3><p>Add customers one by one or import them from Excel. Each month, unpaid amounts carry forward by themselves.</p><button class="btn" data-act="add">Add customer</button><button class="btn ghost" data-act="import">Import from Excel</button>${LIVE ? "" : `<button class="btn ghost" data-act="sample">Try with sample data</button>`}</div>`; return; }
   const q = S.q.toLowerCase();
-  const list = rows.filter(r => (S.filter === "all" || stateOf(r) === S.filter) && (!q || [r.p.name, r.p.contact, r.status].join(" ").toLowerCase().includes(q)))
-    .sort({overdue: (a, b) => b.overdue - a.overdue || b.balance - a.balance, balance: (a, b) => b.balance - a.balance, name: (a, b) => a.p.name.localeCompare(b.p.name)}[S.sort]);
-  if (!list.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>Nothing here for ${mLabel(S.month)}</h3><p>${rows.length ? "No party matches this filter." : "No balances, invoices or payments in this month."}</p></div>`; return; }
+  const list = rows.filter(r => (S.filter === "all" || (S.filter === "limit" ? r.overLimit : stateOf(r) === S.filter)) && (!q || [r.c.name, r.c.contact, r.remarks].join(" ").toLowerCase().includes(q)))
+    .sort({overdue: (a, b) => b.overdue - a.overdue || b.balance - a.balance, balance: (a, b) => b.balance - a.balance, name: (a, b) => a.c.name.localeCompare(b.c.name)}[S.sort]);
+  if (!list.length) { $("#sheetWrap").innerHTML = `<div class="empty"><h3>No customer matches</h3><p>Change the filter or search.</p></div>`; return; }
+  const v = n => n == null || n === "" ? "" : fmt(n);
   const t = k => fz(list.reduce((s, r) => s + (+r[k] || 0), 0));
-  $("#sheetWrap").innerHTML = `<table><thead><tr><th>#</th><th>Party</th><th class="n">Carried forward</th><th class="n">New this month</th><th class="n">Total due</th><th class="n">Expected</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Overdue</th><th>Terms</th><th>Collection status</th></tr></thead><tbody>
-  ${list.map((r, i) => `<tr data-id="${r.p.id}" class="${r.overdue > 0.009 ? "od" : ""}"><td class="muted">${i + 1}</td>
-    <td class="party">${esc(r.p.name)}${r.p.legal ? ` <span class="tag t-legal">Legal</span>` : ""}<small>${esc(r.p.contact || "")}</small></td>
-    <td class="n">${fz(r.carried)}</td><td class="n">${fz(r.newAmt)}</td><td class="n"><b>${fz(r.totalDue)}</b></td>
-    <td class="n muted">${r.expected != null ? fmt(r.expected) : "–"}</td><td class="n green">${fz(r.received)}</td>
+  $("#sheetWrap").innerHTML = `<table><thead><tr><th>#</th><th>Customer</th><th class="n">Carried forward</th><th class="n">New dues</th><th class="n">Total due</th><th class="n">Expected</th><th class="n">Received</th><th class="n">Balance</th><th class="n">Overdue</th><th class="n">Credit days</th><th class="n">Credit limit</th><th>Remarks</th></tr></thead><tbody>
+  ${list.map((r, i) => `<tr data-id="${r.c.id}" class="${r.overdue > 0.009 ? "od" : ""}"><td class="muted">${i + 1}</td>
+    <td class="party">${esc(r.c.name)}${r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : ""}<small>${esc(r.c.contact || "")}</small></td>
+    <td class="n">${cr(r.carried)}</td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="dues" inputmode="decimal" value="${v(r.e.dues)}" aria-label="New dues"></td>
+    <td class="n"><b>${cr(r.totalDue)}</b></td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="expected" inputmode="decimal" value="${v(r.expected)}" aria-label="Expected"></td>
+    <td class="n green">${fz(r.received)}<button class="addpay" data-pay="${r.c.id}" title="Record payment">+</button></td>
     <td class="n ${r.overdue > 0.009 ? "red" : ""}"><b>${cr(r.balance)}</b></td>
-    <td class="n red">${r.overdue > 0.009 ? `<b>${fmt(r.overdue)}</b><span class="late">${r.late} days late</span>` : ""}</td>
-    <td class="muted" style="white-space:nowrap">${r.p.terms != null ? r.p.terms + " days" : "–"}</td>
-    <td class="st">${r.status ? esc(r.status) : stateOf(r) === "cleared" ? `<span class="tag t-paid">Cleared</span>` : `<span class="muted">–</span>`}${r.by ? `<small>${esc(r.by)}, ${fDate(isoOf(new Date(r.at)))}</small>` : ""}</td></tr>`).join("")}
-  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("carried")}</td><td class="n">${t("newAmt")}</td><td class="n">${t("totalDue")}</td><td class="n">${t("expected")}</td><td class="n">${t("received")}</td><td class="n">${t("balance")}</td><td class="n red">${t("overdue")}</td><td></td><td></td></tr></tfoot></table>`;
+    <td class="n red">${r.overdue > 0.009 ? `<b>${fmt(r.overdue)}</b>` : ""}</td>
+    <td class="edit"><input class="cell sm" data-id="${r.c.id}" data-f="creditDays" inputmode="numeric" value="${r.c.creditDays ?? ""}" aria-label="Credit days"></td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="creditLimit" inputmode="decimal" value="${v(r.c.creditLimit)}" aria-label="Credit limit"></td>
+    <td class="edit"><input class="cell txt" data-id="${r.c.id}" data-f="remarks" value="${esc(r.remarks)}" placeholder="Add remark" aria-label="Remarks"></td></tr>`).join("")}
+  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("carried")}</td><td class="n">${t("dues")}</td><td class="n">${t("totalDue")}</td><td class="n">${t("expected")}</td><td class="n">${t("received")}</td><td class="n">${t("balance")}</td><td class="n red">${t("overdue")}</td><td></td><td></td><td></td></tr></tfoot></table>`;
+}
+async function saveCell(inp) {
+  const cid = inp.dataset.id, f = inp.dataset.f, c = S.customers.find(x => x.id === cid); if (!c) return;
+  const val = f === "remarks" ? inp.value.trim() : num(inp.value);
+  if (f !== "remarks" && inp.value.trim() !== "" && val == null) { toast("Enter a number", true); return; }
+  try {
+    if (f === "creditDays" || f === "creditLimit") { if ((c[f] ?? null) === val) return; await store.update("customers", cid, {[f]: val}); }
+    else { const e = entryOf(cid, S.month); if (((e || {})[f] ?? (f === "remarks" ? "" : null)) === val) return;
+      await store.upsert("entries", {...(e || {id: entryId(cid, S.month), customerId: cid, month: S.month, dues: null, expected: null, remarks: ""}), customer: c.name, [f]: val, by: me.name, at: Date.now()}); }
+    toast("Saved");
+  } catch (err) { toast("Not saved: " + err.message, true); }
 }
 function log() {
-  const names = Object.fromEntries(S.parties.map(p => [p.id, p.name]));
+  const names = Object.fromEntries(S.customers.map(c => [c.id, c.name]));
   const list = S.payments.filter(x => inMonth(x.date, S.month)).sort((a, b) => b.date.localeCompare(a.date) || (b.at || 0) - (a.at || 0));
   const ok = list.filter(x => !x.bounced);
   $("#logSum").textContent = `${ok.length} payment${ok.length === 1 ? "" : "s"}, AED ${fmt(total(ok))} received in ${mLabel(S.month)}`;
-  $("#logWrap").innerHTML = list.length ? `<table><thead><tr><th>Date</th><th>Party</th><th class="n">Amount (AED)</th><th>Mode</th><th>Reference</th><th>Recorded by</th></tr></thead><tbody>${list.map(x => `
-    <tr data-id="${x.partyId}"><td>${fDate(x.date)}</td><td class="party">${esc(names[x.partyId] || "Deleted party")}</td><td class="n ${x.bounced ? "red" : "green"}">${fmt(x.amount)}</td>
+  $("#logWrap").innerHTML = list.length ? `<table><thead><tr><th>Date</th><th>Customer</th><th class="n">Amount (AED)</th><th>Mode</th><th>Reference</th><th>Recorded by</th></tr></thead><tbody>${list.map(x => `
+    <tr data-id="${x.customerId}"><td>${fDate(x.date)}</td><td class="party">${esc(names[x.customerId] || x.customer || "Deleted customer")}</td><td class="n ${x.bounced ? "red" : "green"}">${fmt(x.amount)}</td>
     <td>${x.bounced ? `<span class="tag t-bounced">Bounced</span>` : ""}${esc(x.mode)}${x.chequeDate ? `<small class="muted" style="display:block">Cheque date ${fDate(x.chequeDate)}</small>` : ""}</td>
     <td>${esc(x.ref || "")}</td><td class="muted">${esc(x.by || "")}</td></tr>`).join("")}</tbody></table>`
-    : `<div class="empty"><h3>No payments in ${mLabel(S.month)} yet</h3><p>Open a party on the monthly sheet and use Record payment.</p></div>`;
-}
-function parties() {
-  const q = S.pq.toLowerCase();
-  const list = S.parties.filter(p => !q || [p.name, p.contact, p.email].join(" ").toLowerCase().includes(q)).map(p => ({p, ...position(p)})).sort((a, b) => b.overdue - a.overdue || a.p.name.localeCompare(b.p.name));
-  $("#partiesWrap").innerHTML = list.length ? `<table><thead><tr><th>Party</th><th>Terms</th><th>Contact</th><th class="n">Outstanding today</th><th class="n">Overdue today</th></tr></thead><tbody>${list.map(x => `
-    <tr data-id="${x.p.id}" class="${x.overdue > 0.009 ? "od" : ""}"><td class="party">${esc(x.p.name)}${x.p.legal ? ` <span class="tag t-legal">Legal</span>` : ""}<small>${esc(x.p.email || "")}</small></td>
-    <td>${x.p.terms ?? "–"} days</td><td>${esc(x.p.contact || "–")}</td><td class="n"><b>${cr(x.outstanding)}</b></td><td class="n red">${x.overdue > 0.009 ? fmt(x.overdue) : ""}</td></tr>`).join("")}</tbody></table>`
-    : `<div class="empty"><h3>No parties yet</h3><p>Add a party to start.</p></div>`;
+    : `<div class="empty"><h3>No payments in ${mLabel(S.month)} yet</h3><p>Use the + next to Received on the monthly sheet.</p></div>`;
 }
 
-/* ---------- party drawer ---------- */
-function defDate() { const t = today(); return inMonth(t, S.month) ? t : S.month + "-01"; }
+/* ---------- customer drawer ---------- */
+function defDate() { const t = today(); return inMonth(t, S.month) ? t : monthEnd(S.month) < t ? monthEnd(S.month) : S.month + "-01"; }
 function openDrawer(id) {
-  const p = S.parties.find(x => x.id === id); if (!p) return;
+  const c = S.customers.find(x => x.id === id); if (!c) return;
   S.open = id; $("#scrim").hidden = false; const d = $("#drawer"); d.hidden = false;
-  const r = rowFor(p, S.month), dis = canEdit() ? "" : "disabled";
   d.innerHTML = `<div class="dhead"><div><h3 id="dName"></h3><p id="dSub"></p></div><button class="btn ghost sm" id="dClose">Close</button></div>
   <div class="dsec"><div id="dFig"></div><div class="acts" id="dActs"></div></div>
-  <div class="dsec edit-only"><h4>Record payment</h4><form id="payForm" class="g2">
-    <label>Amount (AED)<input name="amount" type="number" step="0.01" min="0.01" required></label>
+  <div class="dsec"><h4>Record payment</h4><form id="payForm" class="g2">
+    <label>Amount (AED)<input name="amount" inputmode="decimal" required></label>
     <label>Date received<input name="date" type="date" required value="${defDate()}"></label>
     <label>Mode<select name="mode">${["Bank transfer", "Online transfer", "Cash", "Cheque", "PDC cheque", "Card"].map(m => `<option>${m}</option>`).join("")}</select></label>
     <label>Reference / cheque no.<input name="ref"></label>
     <label class="chq" hidden>Cheque date<input name="chequeDate" type="date"></label>
-    <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn green" type="submit">Record payment</button><button class="btn ghost" type="button" id="fillBal">Fill full outstanding</button></div></form></div>
-  <div class="dsec"><h4>Status for ${mLabel(S.month)}</h4><form id="statForm" class="g2">
-    <label class="full">Collection status<input name="status" value="${esc(r.status)}" placeholder="e.g. Cheque ready, collect on 30th" ${dis}></label>
-    <div class="qs full edit-only">${["Payment received", "Will pay end of month", "PDC to be collected", "PDC received", "Follow up", "Legal initiated"].map(s => `<button type="button" data-qs="${s}">${s}</button>`).join("")}</div>
-    <label>Expected this month (AED)<input name="expected" type="number" step="0.01" value="${r.expected ?? ""}" ${dis}></label>
-    <div style="align-self:end" class="edit-only"><button class="btn" type="submit">Save status</button></div>
-    <p class="meta full" id="statMeta"></p></form></div>
-  <div class="dsec"><details id="invDet"><summary>Invoices</summary>
-    <form id="dueForm" class="g2 edit-only" style="margin-bottom:14px">
-      <label>Invoice no.<input name="no" required></label><label>Invoice date<input name="date" type="date" required value="${defDate()}"></label>
-      <label>Amount (AED)<input name="amount" type="number" step="0.01" min="0.01" required></label><label>Credit days<input name="terms" type="number" min="0" value="${p.terms ?? 30}"></label>
-      <label class="full">Due date<input name="dueDate" type="date" required></label><div class="full"><button class="btn" type="submit">Add invoice</button></div></form>
-    <div id="dDues"></div></details></div>
-  <div class="dsec"><details open><summary>Payments history</summary><div id="dPays"></div></details></div>
-  <div class="dsec edit-only"><details><summary>Party details</summary><form id="editForm" class="g2">
-    <label class="full">Party name<input name="name" required value="${esc(p.name)}"></label>
-    <label>Credit terms (days)<input name="terms" type="number" min="0" value="${p.terms ?? ""}"></label><label>Contact number<input name="contact" value="${esc(p.contact || "")}"></label>
-    <label class="full">Email<input name="email" type="email" value="${esc(p.email || "")}"></label>
-    <label class="full" style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input name="legal" type="checkbox" style="width:auto;margin:0" ${p.legal ? "checked" : ""}>Under legal action</label>
-    <div class="full" style="display:flex;justify-content:space-between;gap:8px"><button class="btn" type="submit">Save details</button><button class="btn danger admin-only" type="button" id="delParty">Delete party</button></div></form></details></div>`;
-  wire(p); refreshDrawer(); $("#dClose").focus();
+    <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn green" type="submit">Record payment</button><button class="btn ghost" type="button" id="fillBal">Fill full balance</button></div></form></div>
+  <div class="dsec"><details open><summary>Payments</summary><div id="dPays"></div></details></div>
+  <div class="dsec"><details><summary>Month by month</summary><div id="dHist"></div></details></div>
+  <div class="dsec"><details><summary>Customer details</summary><form id="editForm" class="g2">
+    <label class="full">Customer name<input name="name" required value="${esc(c.name)}"></label>
+    <label>Credit days approved<input name="creditDays" inputmode="numeric" value="${c.creditDays ?? ""}"></label>
+    <label>Credit limit approved (AED)<input name="creditLimit" inputmode="decimal" value="${c.creditLimit ?? ""}"></label>
+    <label class="full">Contact number<input name="contact" value="${esc(c.contact || "")}"></label>
+    <div class="full" style="display:flex;justify-content:space-between;gap:8px"><button class="btn" type="submit">Save details</button><button class="btn danger" type="button" id="delCust">Delete customer</button></div></form></details></div>`;
+  wire(c); refreshDrawer();
 }
 function closeDrawer() { S.open = null; $("#drawer").hidden = true; $("#scrim").hidden = true; }
 function refreshDrawer() {
-  const p = S.parties.find(x => x.id === S.open); if (!p) return closeDrawer();
-  const r = rowFor(p, S.month), pos = position(p);
-  $("#dName").innerHTML = esc(p.name) + (p.legal ? ` <span class="tag t-legal">Legal</span>` : "");
-  $("#dSub").textContent = [p.terms != null ? p.terms + " days credit" : "", p.contact, p.email].filter(Boolean).join(", ");
-  $("#dFig").innerHTML = `<dl class="dfigs"><div><dt>Carried forward</dt><dd>${fmt(r.carried)}</dd></div><div><dt>New this month</dt><dd>${fmt(r.newAmt)}</dd></div><div><dt>Received this month</dt><dd class="green">${fmt(r.received)}</dd></div>
-    <div><dt>Month balance</dt><dd>${cr(r.balance)}</dd></div><div class="${pos.overdue > 0.009 ? "hot" : ""}"><dt>Overdue today</dt><dd>${fmt(pos.overdue)}</dd></div><div><dt>Outstanding today</dt><dd>${cr(pos.outstanding)}</dd></div></dl>`;
-  const phone = (p.contact || "").replace(/\D/g, "").replace(/^0/, "971"), amt = pos.overdue > 0.009 ? pos.overdue : pos.outstanding;
-  const msg = `Dear ${p.name},\n\nGreetings from ${COMPANY}.\n\nAs per our records, AED ${fmt(amt)} is ${pos.overdue > 0.009 ? "overdue" : "outstanding"} on your account. Kindly arrange the payment at the earliest.\n\nIf already paid, please share the payment details so we can update our records.\n\nThank you.`;
+  const c = S.customers.find(x => x.id === S.open); if (!c) return closeDrawer();
+  const r = calc(c, S.month);
+  $("#dName").innerHTML = esc(c.name) + (r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : "");
+  $("#dSub").textContent = [c.creditDays != null ? c.creditDays + " days credit" : "", c.creditLimit ? "limit AED " + fmt(c.creditLimit) : "", c.contact].filter(Boolean).join(", ");
+  $("#dFig").innerHTML = `<dl class="dfigs"><div><dt>Carried forward</dt><dd>${cr(r.carried)}</dd></div><div><dt>New dues</dt><dd>${fmt(r.dues)}</dd></div><div><dt>Received (${mLabel(S.month).split(" ")[0]})</dt><dd class="green">${fmt(r.received)}</dd></div>
+    <div><dt>Balance</dt><dd>${cr(r.balance)}</dd></div><div class="${r.overdue > 0.009 ? "hot" : ""}"><dt>Overdue</dt><dd>${fmt(r.overdue)}</dd></div><div><dt>Expected</dt><dd>${r.expected != null ? fmt(r.expected) : "–"}</dd></div></dl>`;
+  const phone = (c.contact || "").replace(/\D/g, "").replace(/^0/, "971"), amt = r.overdue > 0.009 ? r.overdue : r.balance;
+  const msg = `Dear ${c.name},\n\nGreetings from ${COMPANY}.\n\nAs per our records, AED ${fmt(amt)} is ${r.overdue > 0.009 ? "overdue" : "due"} on your account. Kindly arrange the payment at the earliest.\n\nIf already paid, please share the payment details so we can update our records.\n\nThank you.`;
   $("#dActs").innerHTML = (phone.length >= 9 && amt > 0.009 ? `<a class="btn green sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}">WhatsApp reminder</a>` : "") + (phone ? ` <a class="btn ghost sm" href="tel:+${phone}">Call</a>` : "");
-  $("#statMeta").textContent = r.by ? `Last updated by ${r.by} on ${fDate(isoOf(new Date(r.at)))}` : "";
-  $("#dDues").innerHTML = pos.list.length ? pos.list.slice().reverse().map(d => `<div class="item ${d.st === "od" ? "od" : ""}"><div><b>${esc(d.no || "Invoice")}</b>
-      ${d.st === "od" ? `<span class="tag t-od">Overdue ${d.days} days</span>` : d.st === "due" ? `<span class="tag t-due">Due in ${d.days} days</span>` : d.st === "paid" ? `<span class="tag t-paid">Paid</span>` : `<span class="tag t-part">Part-paid</span>`}
-      <div class="sub">Dated ${fDate(d.date)}, due ${fDate(d.dueDate)}${d.st !== "paid" && d.open < d.amount ? `, AED ${fmt(d.open)} still open` : ""}</div></div>
-      <div class="amt">${fmt(d.amount)}</div><div class="ops admin-only"><button class="btn sm ghost" data-deldue="${d.id}">Delete</button></div></div>`).join("") : `<p class="muted">No invoices yet.</p>`;
-  const pays = S.payments.filter(x => x.partyId === p.id).sort((a, b) => b.date.localeCompare(a.date));
+  const pays = S.payments.filter(x => x.customerId === c.id).sort((a, b) => b.date.localeCompare(a.date));
   $("#dPays").innerHTML = pays.length ? pays.map(x => `<div class="item"><div>${x.bounced ? `<span class="tag t-bounced">Bounced</span>` : ""}${x.mode === "PDC cheque" ? `<span class="tag t-pdc">PDC</span>` : ""}<b>${fDate(x.date)}</b>, ${esc(x.mode)}${x.ref ? ", " + esc(x.ref) : ""}
       <div class="sub">${x.chequeDate ? `Cheque date ${fDate(x.chequeDate)}. ` : ""}Recorded by ${esc(x.by || "–")}</div></div><div class="amt ${x.bounced ? "red" : "green"}">${fmt(x.amount)}</div>
-      <div class="ops">${!x.bounced && /cheque/i.test(x.mode) ? `<button class="btn sm ghost edit-only" data-bounce="${x.id}">Mark bounced</button>` : ""}<button class="btn sm ghost admin-only" data-delpay="${x.id}">Delete</button></div></div>`).join("") : `<p class="muted">No payments yet.</p>`;
+      <div class="ops">${!x.bounced && /cheque/i.test(x.mode) ? `<button class="btn sm ghost" data-bounce="${x.id}">Mark bounced</button>` : ""}<button class="btn sm ghost" data-delpay="${x.id}">Delete</button></div></div>`).join("") : `<p class="muted">No payments yet.</p>`;
+  const months = [...new Set([...S.entries.filter(e => e.customerId === c.id).map(e => e.month), ...S.payments.filter(p => p.customerId === c.id).map(p => p.date.slice(0, 7))])].sort().reverse().slice(0, 12);
+  $("#dHist").innerHTML = months.length ? months.map(m => { const h = calc(c, m); return `<div class="item ${h.overdue > 0.009 ? "od" : ""}"><div><b>${mLabel(m)}</b><div class="sub">Dues ${fmt(h.totalDue)}, received ${fmt(h.received)}${h.remarks ? ", " + esc(h.remarks) : ""}</div></div><div class="amt">${cr(h.balance)}</div></div>`; }).join("") : `<p class="muted">No history yet.</p>`;
 }
-function wire(p) {
+function wire(c) {
   $("#dClose").onclick = closeDrawer;
   const pf = $("#payForm"); pf.mode.onchange = () => pf.querySelector(".chq").hidden = !/cheque/i.test(pf.mode.value);
-  $("#fillBal").onclick = () => pf.amount.value = Math.max(0, position(p).outstanding).toFixed(2);
+  $("#fillBal").onclick = () => pf.amount.value = Math.max(0, calc(c, S.month).balance).toFixed(2);
   pf.onsubmit = async e => { e.preventDefault(); const amount = num(pf.amount.value); if (!(amount > 0)) return toast("Enter an amount above zero", true);
-    try { await store.add("payments", {id: newId(), partyId: p.id, amount, date: pf.date.value, mode: pf.mode.value, ref: pf.ref.value.trim(), chequeDate: /cheque/i.test(pf.mode.value) ? pf.chequeDate.value || null : null, by: me.name, at: Date.now(), bounced: false});
+    try { await store.upsert("payments", {id: newId(), customerId: c.id, customer: c.name, amount, date: pf.date.value, mode: pf.mode.value, ref: pf.ref.value.trim(), chequeDate: /cheque/i.test(pf.mode.value) ? pf.chequeDate.value || null : null, by: me.name, at: Date.now(), bounced: false});
       pf.amount.value = ""; pf.ref.value = ""; toast(`Payment of AED ${fmt(amount)} recorded`); } catch (err) { toast(err.message, true); } };
-  const sf = $("#statForm"); $$("[data-qs]", sf).forEach(b => b.onclick = () => sf.status.value = b.dataset.qs);
-  sf.onsubmit = async e => { e.preventDefault(); try { await store.setMonthly(p.id, S.month, {status: sf.status.value.trim(), expected: num(sf.expected.value), by: me.name, at: Date.now()}); toast("Status saved"); } catch (err) { toast(err.message, true); } };
-  const df = $("#dueForm"), sync = () => { if (df.date.value) df.dueDate.value = addDays(df.date.value, df.terms.value || 0); };
-  df.date.oninput = df.terms.oninput = sync; sync();
-  df.onsubmit = async e => { e.preventDefault(); const amount = num(df.amount.value); if (!(amount > 0)) return toast("Enter an amount above zero", true);
-    try { await store.add("dues", {id: newId(), partyId: p.id, no: df.no.value.trim(), date: df.date.value, dueDate: df.dueDate.value, amount, by: me.name, at: Date.now()}); df.no.value = ""; df.amount.value = ""; toast("Invoice added"); } catch (err) { toast(err.message, true); } };
   const ef = $("#editForm");
-  ef.onsubmit = async e => { e.preventDefault(); try { await store.update("parties", p.id, {name: ef.name.value.trim(), terms: ef.terms.value === "" ? null : +ef.terms.value, contact: ef.contact.value.trim(), email: ef.email.value.trim(), legal: ef.legal.checked}); toast("Details saved"); } catch (err) { toast(err.message, true); } };
-  $("#delParty").onclick = async () => { if (!confirm(`Delete ${p.name} with all its invoices and payments?`)) return;
-    try { for (const d of S.dues.filter(x => x.partyId === p.id)) await store.remove("dues", d.id); for (const x of S.payments.filter(x => x.partyId === p.id)) await store.remove("payments", x.id); await store.remove("parties", p.id); closeDrawer(); toast("Party deleted"); } catch (err) { toast(err.message, true); } };
-  $("#drawer").onclick = async e => { const b = e.target.closest("[data-deldue],[data-delpay],[data-bounce]"); if (!b) return;
-    try { if (b.dataset.deldue && confirm("Delete this invoice?")) { await store.remove("dues", b.dataset.deldue); toast("Invoice deleted"); }
-      if (b.dataset.delpay && confirm("Delete this payment? The amount goes back to the balance.")) { await store.remove("payments", b.dataset.delpay); toast("Payment deleted"); }
+  ef.onsubmit = async e => { e.preventDefault(); try { await store.update("customers", c.id, {name: ef.name.value.trim(), creditDays: num(ef.creditDays.value), creditLimit: num(ef.creditLimit.value), contact: ef.contact.value.trim()}); toast("Details saved"); } catch (err) { toast(err.message, true); } };
+  $("#delCust").onclick = async () => { if (!confirm(`Delete ${c.name} and all their monthly figures and payments?`)) return;
+    try { for (const e of S.entries.filter(x => x.customerId === c.id)) await store.remove("entries", e.id); for (const x of S.payments.filter(x => x.customerId === c.id)) await store.remove("payments", x.id); await store.remove("customers", c.id); closeDrawer(); toast("Customer deleted"); } catch (err) { toast(err.message, true); } };
+  $("#drawer").onclick = async e => { const b = e.target.closest("[data-delpay],[data-bounce]"); if (!b) return;
+    try { if (b.dataset.delpay && confirm("Delete this payment? The amount goes back to the balance.")) { await store.remove("payments", b.dataset.delpay); toast("Payment deleted"); }
       if (b.dataset.bounce && confirm("Mark this cheque as bounced? The amount goes back to the balance.")) { await store.update("payments", b.dataset.bounce, {bounced: true, bouncedAt: Date.now(), bouncedBy: me.name}); toast("Marked as bounced"); }
     } catch (err) { toast(err.message, true); } };
 }
 
-/* ---------- add party ---------- */
-$("#partyDlg").addEventListener("close", async () => {
-  if ($("#partyDlg").returnValue !== "ok") return; const f = $("#partyForm"), name = f.name.value.trim(); if (!name) return;
-  const p = {id: newId(), name, terms: f.terms.value === "" ? null : +f.terms.value, contact: f.contact.value.trim(), email: f.email.value.trim(), legal: f.legal.checked, monthly: {}, createdAt: Date.now(), by: me.name};
-  try { await store.add("parties", p); toast("Party added. Now add their invoices."); openDrawer(p.id); $("#invDet").open = true; } catch (err) { toast(err.message, true); }
+/* ---------- add customer ---------- */
+$("#addDlg").addEventListener("close", async () => {
+  if ($("#addDlg").returnValue !== "ok") return; const f = $("#addForm"), name = f.name.value.trim(); if (!name) return;
+  if (S.customers.some(c => normName(c.name) === normName(name))) return toast(`${name} already exists`, true);
+  const c = {id: newId(), name, creditDays: num(f.creditDays.value), creditLimit: num(f.creditLimit.value), contact: f.contact.value.trim(), createdAt: Date.now(), by: me.name};
+  const items = [["customers", c]];
+  if (f.dues.value || f.expected.value || f.remarks.value) items.push(["entries", {id: entryId(c.id, S.month), customerId: c.id, customer: name, month: S.month, dues: num(f.dues.value), expected: num(f.expected.value), remarks: f.remarks.value.trim(), by: me.name, at: Date.now()}]);
+  try { await store.upsertMany(items); toast("Customer added"); } catch (err) { toast(err.message, true); }
 });
 
-/* ---------- Excel export ---------- */
-function exportExcel() {
-  if (typeof XLSX === "undefined") return toast("Excel download needs an internet connection.", true);
-  const rows = monthRows().sort((a, b) => a.p.name.localeCompare(b.p.name)), t = k => r2(rows.reduce((s, r) => s + (+r[k] || 0), 0));
-  const head = ["SL.NO", "PARTY NAME", "CARRIED FORWARD", "NEW THIS MONTH", "TOTAL DUE", "EXPECTED", "RECEIVED", "BALANCE", "OVERDUE", "DAYS LATE", "PAYMENT DAYS", "COLLECTION STATUS", "UPDATED BY", "CONTACT NUMBER", "E-MAIL ADDRESS"];
-  const body = rows.map((r, i) => [i + 1, r.p.name, r.carried, r.newAmt, r.totalDue, r.expected, r.received, r.balance, r.overdue || null, r.overdue ? r.late : null, r.p.terms, r.status, r.by, r.p.contact, r.p.email]);
-  body.push([], [null, "TOTAL", t("carried"), t("newAmt"), t("totalDue"), t("expected"), t("received"), t("balance"), t("overdue")]);
-  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ...body]); ws["!cols"] = head.map((h, i) => ({wch: i === 1 ? 40 : i === 11 ? 30 : 14}));
-  XLSX.utils.book_append_sheet(wb, ws, "Receivables");
-  const names = Object.fromEntries(S.parties.map(p => [p.id, p.name]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["DATE", "PARTY", "AMOUNT", "MODE", "REFERENCE", "CHEQUE DATE", "BOUNCED", "RECORDED BY"], ...S.payments.filter(x => inMonth(x.date, S.month)).sort((a, b) => a.date.localeCompare(b.date)).map(x => [x.date, names[x.partyId] || "", x.amount, x.mode, x.ref, x.chequeDate, x.bounced ? "YES" : "", x.by])]), "Payments");
-  XLSX.writeFile(wb, `RBM Receivables ${mLabel(S.month)}.xlsx`);
-}
-
 /* ---------- Excel import ---------- */
-const normName = s => String(s || "").toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
-function xlDate(v, fb) {
-  if (v instanceof Date && !isNaN(v)) return isoOf(new Date(v.getTime() + 12 * 36e5));
-  if (typeof v === "number" && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10);
-  const t = String(v ?? "").trim(); let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-  m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-  if (m) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}-${pad(m[1])}`;
-  return fb;
-}
 let IMP = null;
-function openImport() { const f = $("#importForm"); f.reset(); f.date.value = defDate(); IMP = null; $("#impPreview").innerHTML = ""; $("#impGo").disabled = true; $("#importDlg").showModal(); }
-function planImport(aoa, fb) {
-  const h = aoa.findIndex(r => r && r.some(c => /party/i.test(String(c ?? ""))));
-  if (h < 0) throw new Error('No "PARTY NAME" column found in the first sheet.');
+function openImport() { const f = $("#importForm"); f.reset(); f.month.value = S.month; IMP = null; $("#impPreview").innerHTML = ""; $("#impGo").disabled = true; $("#importDlg").showModal(); }
+function planImport(aoa, m) {
+  const h = aoa.findIndex(r => r && r.some(c => /customer|party/i.test(String(c ?? ""))));
+  if (h < 0) throw new Error('No "Customer name" column found in the first sheet.');
   const head = aoa[h].map(c => String(c ?? "").trim().toUpperCase());
   const col = (...res) => { for (const re of res) { const i = head.findIndex(x => re.test(x)); if (i >= 0) return i; } return -1; };
-  const C = {name: col(/PARTY/), no: col(/INVOICE NO|INV.*NO/), invDate: col(/INVOICE DATE|INV.*DATE|^DATE$/), due: col(/AMOUNT DUE|ACTUAL DUE|INVOICE AMOUNT|^DUE$/, /TOTAL DUE/),
-    prev: col(/PREVIOUS/), rec: col(/RECEIVED(?!.*DATE)/), recDate: col(/RECEIVED DATE|PAYMENT DATE/), mode: col(/MODE/), days: col(/PAYMENT DAYS|CREDIT|TERMS|^DAYS$/), status: col(/STATUS/), contact: col(/CONTACT|PHONE|MOBILE/), email: col(/MAIL/)};
+  const C = {name: col(/CUSTOMER|PARTY/), dues: col(/^DUES?$|DUES|ACTUAL DUE|AMOUNT DUE/), prev: col(/PREVIOUS/), exp: col(/EXPECTED/), days: col(/CREDIT DAYS|PAYMENT DAYS|^DAYS/), limit: col(/LIMIT/),
+    remarks: col(/REMARK/, /STATUS/), contact: col(/CONTACT|PHONE|MOBILE/), rec: col(/RECEIVED/)};
   const g = (r, i) => i < 0 ? null : r[i];
-  const byName = new Map(S.parties.map(p => [normName(p.name), p]));
-  const items = [], statusUpd = [], created = new Map(), now = Date.now(), m = fb.slice(0, 7);
-  const sm = {newP: 0, oldP: 0, inv: 0, due: 0, pay: 0, rec: 0, dup: 0, skip: 0};
+  const byName = new Map(S.customers.map(c => [normName(c.name), c]));
+  const out = new Map(), items = [], now = Date.now(), sm = {newC: 0, oldC: 0, dues: 0, exp: 0, pay: 0, rec: 0};
   for (let i = h + 1; i < aoa.length; i++) {
     const r = aoa[i] || []; const raw = String(g(r, C.name) ?? "").trim();
     if (!raw || /^total/i.test(raw)) continue;
     let name = raw, bracket = null; const mt = raw.match(/^(.*?)[\s\-–]*\(\s*([\d,]+(?:\.\d+)?)\s*\)\s*$/);
     if (mt) { name = mt[1].trim(); bracket = num(mt[2]); }
-    const isPdc = /pdc/i.test(String(g(r, C.prev) ?? "")) || /pdc/i.test(String(g(r, C.due) ?? ""));
-    const terms = parseInt(String(g(r, C.days) ?? "")) || null;
-    const status = String(g(r, C.status) ?? "").trim();
-    const due = isPdc ? bracket : (num(g(r, C.due)) ?? num(g(r, C.prev)));
-    const rec = isPdc ? bracket : num(g(r, C.rec));
+    const pdc = /pdc/i.test(String(g(r, C.prev) ?? "") + String(g(r, C.dues) ?? ""));
     const key = normName(name);
-    let p = byName.get(key) || created.get(key), isNew = false;
-    if (!p) {
-      p = {id: newId(), name, terms, contact: String(g(r, C.contact) ?? "").trim(), email: String(g(r, C.email) ?? "").trim(), legal: /legal/i.test(status), monthly: status ? {[mkey(m)]: {status, expected: null, by: me.name, at: now}} : {}, createdAt: now, by: me.name};
-      created.set(key, p); items.push(["parties", p]); sm.newP++; isNew = true;
-    } else if (!created.has(key) && !statusUpd.some(x => x.id === p.id)) { sm.oldP++; if (status) statusUpd.push({id: p.id, status}); }
-    if (!(due > 0) && !(rec > 0) && !isNew) { sm.skip++; continue; }
-    const invDate = xlDate(g(r, C.invDate), fb), no = String(g(r, C.no) ?? "").trim() || "Opening balance";
-    const t = terms ?? p.terms ?? 0;
-    if (due > 0) {
-      if (S.dues.some(d => d.partyId === p.id && d.no === no && r2(d.amount) === due && d.date === invDate)) sm.dup++;
-      else { items.push(["dues", {id: newId(), partyId: p.id, no, date: invDate, dueDate: addDays(invDate, t), amount: due, by: me.name, at: now}]); sm.inv++; sm.due += due; }
-    }
-    if (rec > 0) {
-      const pd = xlDate(g(r, C.recDate), invDate);
-      if (S.payments.some(x => x.partyId === p.id && r2(x.amount) === rec && x.date === pd)) sm.dup++;
-      else { const mode = String(g(r, C.mode) ?? "").trim() || (isPdc ? "PDC cheque" : "Bank transfer");
-        items.push(["payments", {id: newId(), partyId: p.id, amount: rec, date: pd, mode, ref: "Excel import", chequeDate: null, by: me.name, at: now, bounced: false}]); sm.pay++; sm.rec += rec; }
+    let c = out.get(key) || byName.get(key);
+    const days = parseInt(String(g(r, C.days) ?? "")), limit = num(g(r, C.limit)), contact = String(g(r, C.contact) ?? "").trim();
+    if (!c) { c = {id: newId(), name, creditDays: null, creditLimit: null, contact: "", createdAt: now, by: me.name}; sm.newC++; } else if (!out.has(key)) sm.oldC++;
+    c = {...c, ...(isNaN(days) ? {} : {creditDays: days}), ...(limit != null ? {creditLimit: limit} : {}), ...(contact ? {contact} : {})};
+    out.set(key, c);
+    const dues = pdc ? bracket : (num(g(r, C.dues)) ?? num(g(r, C.prev))), exp = num(g(r, C.exp)), remarks = String(g(r, C.remarks) ?? "").trim();
+    const prevE = entryOf(c.id, m) || {id: entryId(c.id, m), customerId: c.id, month: m, dues: null, expected: null, remarks: ""};
+    items.push(["entries", {...prevE, customer: c.name, ...(dues != null ? {dues} : {}), ...(exp != null ? {expected: exp} : {}), ...(remarks ? {remarks} : {}), by: me.name, at: now}]);
+    sm.dues += dues || 0; sm.exp += exp || 0;
+    const rec = pdc ? bracket : num(g(r, C.rec));
+    if (rec > 0 && !S.payments.some(p => p.customerId === c.id && r2(p.amount) === rec && inMonth(p.date, m) && p.ref === "Excel import")) {
+      items.push(["payments", {id: newId(), customerId: c.id, customer: c.name, amount: rec, date: monthEnd(m) < today() ? monthEnd(m) : (inMonth(today(), m) ? today() : m + "-01"), mode: pdc ? "PDC cheque" : "Bank transfer", ref: "Excel import", chequeDate: null, by: me.name, at: now, bounced: false}]);
+      sm.pay++; sm.rec += rec;
     }
   }
-  return {items, statusUpd, sm, m};
+  return {items: [...[...out.values()].map(c => ["customers", c]), ...items], sm, m};
 }
 async function previewImport() {
-  const f = $("#importForm"), file = f.file.files[0]; $("#impGo").disabled = true; IMP = null;
-  if (!file) return;
+  const f = $("#importForm"), file = f.file.files[0]; $("#impGo").disabled = true; IMP = null; if (!file) return;
   try {
     if (typeof XLSX === "undefined") throw new Error("Excel reader didn't load. Check the internet connection.");
-    const wb = XLSX.read(await file.arrayBuffer(), {type: "array", cellDates: true});
+    const wb = XLSX.read(await file.arrayBuffer(), {type: "array"});
     const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1, raw: true, defval: null});
-    IMP = planImport(aoa, f.date.value || defDate()); const x = IMP.sm;
-    $("#impPreview").innerHTML = `<b style="color:var(--ink)">Ready to import</b><br>${x.newP} new parties, ${x.oldP} matched to existing parties<br>
-      ${x.inv} invoices totalling AED ${fmt(x.due)}<br>${x.pay} payments totalling AED ${fmt(x.rec)}${x.dup ? `<br>${x.dup} rows skipped as already imported` : ""}`;
-    $("#impGo").disabled = !IMP.items.length && !IMP.statusUpd.length;
+    IMP = planImport(aoa, f.month.value || S.month); const x = IMP.sm;
+    $("#impPreview").innerHTML = `<b style="color:var(--ink)">Ready to import into ${mLabel(IMP.m)}</b><br>${x.newC} new customers, ${x.oldC} already in the app (will be updated)<br>Dues AED ${fmt(x.dues)}, expected AED ${fmt(x.exp)}${x.pay ? `<br>${x.pay} payments received, AED ${fmt(x.rec)}` : ""}`;
+    $("#impGo").disabled = !IMP.items.length;
   } catch (err) { $("#impPreview").innerHTML = `<span class="red">${esc(err.message)}</span>`; }
 }
 $("#importForm").file.onchange = previewImport;
-$("#importForm").date.onchange = previewImport;
+$("#importForm").month.onchange = previewImport;
 $("#impGo").onclick = async () => {
   if (!IMP) return; const b = $("#impGo"); b.disabled = true; b.textContent = "Importing…";
-  try {
-    if (IMP.items.length) await store.addMany(IMP.items);
-    for (const u of IMP.statusUpd) await store.setMonthly(u.id, IMP.m, {status: u.status, expected: null, by: me.name, at: Date.now()}, true);
-    if (IMP.statusUpd.length && store.refresh) await store.refresh();
-    $("#importDlg").close(); S.month = IMP.m; setTab("sheet"); toast(`Imported ${IMP.sm.newP + IMP.sm.oldP} parties`);
-  } catch (err) { toast("Import stopped: " + err.message, true); }
+  try { await store.upsertMany(IMP.items); $("#importDlg").close(); S.month = IMP.m; setTab("sheet"); toast(`Imported ${IMP.sm.newC + IMP.sm.oldC} customers`); }
+  catch (err) { toast("Import stopped: " + err.message, true); }
   b.textContent = "Import"; b.disabled = false;
 };
 $("#tplBtn").onclick = () => {
   if (typeof XLSX === "undefined") return toast("Excel needs an internet connection.", true);
-  const head = ["PARTY NAME", "INVOICE NO", "INVOICE DATE", "AMOUNT DUE", "AMOUNT RECEIVED", "RECEIVED DATE", "PAYMENT MODE", "PAYMENT DAYS", "COLLECTION STATUS", "CONTACT NUMBER", "E-MAIL ADDRESS"];
-  const ex = ["EXAMPLE CONTRACTING LLC", "INV-1001", "2026-09-01", 10000, 4000, "2026-09-15", "Bank transfer", 30, "Balance end of month", "+971 50 000 0000", "accounts@example.com"];
-  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ex]); ws["!cols"] = head.map((h, i) => ({wch: i === 0 ? 36 : 18}));
-  XLSX.utils.book_append_sheet(wb, ws, "Import"); XLSX.writeFile(wb, "RBM Receivables import template.xlsx");
+  const head = ["CUSTOMER NAME", "DUES", "EXPECTED AMOUNT", "CREDIT DAYS APPROVED", "CREDIT LIMIT APPROVED", "REMARKS", "CONTACT NUMBER"];
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ["EXAMPLE CONTRACTING LLC", 25000, 15000, 60, 100000, "Cheque ready on 30th", "+971 50 000 0000"]]);
+  ws["!cols"] = head.map((x, i) => ({wch: i === 0 ? 36 : i === 5 ? 30 : 18})); XLSX.utils.book_append_sheet(wb, ws, "Receivables"); XLSX.writeFile(wb, "RBM Receivables template.xlsx");
 };
 
-/* ---------- sample data for demo (fictional) ---------- */
-function sample() {
-  const m = k => monthAdd(thisMonth(), k), d = (k, day) => `${m(k)}-${pad(day)}`, items = [], now = Date.now();
-  const P = (name, terms, contact, legal = false) => { const id = newId(); items.push(["parties", {id, name, terms, contact, email: "", legal, monthly: {}, createdAt: now, by: "Demo"}]); return id; };
-  const I = (pid, no, date, amount, terms) => items.push(["dues", {id: newId(), partyId: pid, no, date, dueDate: addDays(date, terms), amount, by: "Demo", at: now}]);
-  const Y = (pid, date, amount, mode, ref, chequeDate = null) => items.push(["payments", {id: newId(), partyId: pid, date, amount, mode, ref, chequeDate, by: "Demo", at: now, bounced: false}]);
-  const a = P("Sample Contracting LLC", 30, "+971 50 000 0001"); I(a, "INV-1041", d(-3, 5), 12000, 30); Y(a, d(-2, 12), 12000, "Bank transfer", "TT 5521"); I(a, "INV-1088", d(-2, 9), 8500, 30); I(a, "INV-1130", d(0, 1), 5200, 30);
-  const b = P("Demo Interiors LLC", 60, "+971 55 000 0002"); I(b, "INV-1062", d(-2, 2), 20000, 60); Y(b, d(-1, 20), 10000, "PDC cheque", "CHQ 004512", d(1, 15));
-  const c = P("Example Technical Services", 7, "+971 56 000 0003"); I(c, "INV-1101", d(-1, 25), 3450, 7); Y(c, d(0, 2), 3450, "Online transfer", "Ref 88231");
-  const e = P("Test Carpentry LLC", 45, "+971 52 000 0004", true); I(e, "INV-0990", d(-4, 14), 15000, 45);
-  const f = P("Model Fitout Works", 45, "+971 58 000 0005"); I(f, "INV-1127", d(0, 1), 9800, 45); Y(f, d(0, 1), 2000, "Cash", "Receipt 311");
-  store.addMany(items).then(() => toast("Sample data loaded"));
+/* ---------- Excel download ---------- */
+function exportExcel() {
+  if (typeof XLSX === "undefined") return toast("Excel download needs an internet connection.", true);
+  const rows = S.customers.map(c => calc(c, S.month)).sort((a, b) => a.c.name.localeCompare(b.c.name)), t = k => r2(rows.reduce((s, r) => s + (+r[k] || 0), 0));
+  const head = ["SL.NO", "CUSTOMER NAME", "CARRIED FORWARD", "NEW DUES", "TOTAL DUE", "EXPECTED AMOUNT", "RECEIVED", "BALANCE", "OVERDUE", "CREDIT DAYS APPROVED", "CREDIT LIMIT APPROVED", "REMARKS", "UPDATED BY", "CONTACT NUMBER"];
+  const body = rows.map((r, i) => [i + 1, r.c.name, r.carried, r.dues, r.totalDue, r.expected, r.received, r.balance, r.overdue || null, r.c.creditDays, r.c.creditLimit, r.remarks, r.by, r.c.contact]);
+  body.push([], [null, "TOTAL", t("carried"), t("dues"), t("totalDue"), t("expected"), t("received"), t("balance"), t("overdue")]);
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ...body]); ws["!cols"] = head.map((x, i) => ({wch: i === 1 ? 40 : i === 11 ? 30 : 15}));
+  XLSX.utils.book_append_sheet(wb, ws, "Receivables");
+  const names = Object.fromEntries(S.customers.map(c => [c.id, c.name]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["DATE", "CUSTOMER", "AMOUNT", "MODE", "REFERENCE", "CHEQUE DATE", "BOUNCED", "RECORDED BY"], ...S.payments.filter(x => inMonth(x.date, S.month)).sort((a, b) => a.date.localeCompare(b.date)).map(x => [x.date, names[x.customerId] || x.customer || "", x.amount, x.mode, x.ref, x.chequeDate, x.bounced ? "YES" : "", x.by])]), "Payments");
+  XLSX.writeFile(wb, `RBM Receivables ${mLabel(S.month)}.xlsx`);
 }
 
-/* ---------- wiring + start ---------- */
-function setTab(t) { S.tab = t; $$(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["sheet", "log", "parties"].forEach(x => $("#tab-" + x).hidden = x !== t); render(); }
-function applyRole() { document.body.classList.add("can-edit", "is-admin"); $("#whoName").textContent = me.name; }
-function start() { show("main"); applyRole(); if (unsub) unsub(); unsub = store.subscribe(s => { Object.assign(S, s); render(); }); }
+/* ---------- demo sample (fictional) ---------- */
+function sample() {
+  const m = k => monthAdd(thisMonth(), k), now = Date.now(), items = [];
+  const C = (name, creditDays, creditLimit, contact) => { const id = newId(); items.push(["customers", {id, name, creditDays, creditLimit, contact, createdAt: now, by: "Demo"}]); return id; };
+  const E = (cid, k, dues, expected, remarks = "") => items.push(["entries", {id: entryId(cid, m(k)), customerId: cid, month: m(k), dues, expected, remarks, by: "Demo", at: now}]);
+  const P = (cid, k, day, amount, mode) => items.push(["payments", {id: newId(), customerId: cid, date: `${m(k)}-${pad(day)}`, amount, mode, ref: "", chequeDate: null, by: "Demo", at: now, bounced: false}]);
+  const a = C("Sample Contracting LLC", 30, 50000, "+971 50 000 0001"); E(a, -1, 18000, 18000); P(a, -1, 20, 10000, "Bank transfer"); E(a, 0, 12000, 20000, "Balance promised end of month");
+  const b = C("Demo Interiors LLC", 60, 40000, "+971 55 000 0002"); E(b, -2, 45000, 20000); P(b, -1, 5, 20000, "PDC cheque"); E(b, 0, 6000, 10000, "Follow up");
+  const c = C("Example Technical Services", 30, 20000, "+971 56 000 0003"); E(c, 0, 7400, 7400, "Received online transfer"); P(c, 0, 2, 7400, "Online transfer");
+  const d = C("Model Fitout Works", 45, 30000, "+971 58 000 0005"); E(d, 0, 9800, 5000);
+  store.upsertMany(items).then(() => toast("Sample data loaded"));
+}
+
+/* ---------- wiring ---------- */
+function setTab(t) { S.tab = t; $$(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["sheet", "log"].forEach(x => $("#tab-" + x).hidden = x !== t); render(); }
+function start() { show("main"); document.body.classList.add("can-edit", "is-admin"); $("#whoName").textContent = me.name; if (unsub) unsub(); unsub = store.subscribe(s => { Object.assign(S, s); render(); }); }
 $$(".tabs button").forEach(b => b.onclick = () => setTab(b.dataset.tab));
 $("#mPrev").onclick = () => { S.month = monthAdd(S.month, -1); render(); };
 $("#mNext").onclick = () => { S.month = monthAdd(S.month, 1); render(); };
 $("#mToday").onclick = () => { S.month = thisMonth(); render(); };
 $("#mPick").onchange = e => { if (e.target.value) { S.month = e.target.value; render(); } };
 $("#q").oninput = e => { S.q = e.target.value; render(); };
-$("#pq").oninput = e => { S.pq = e.target.value; render(); };
 $("#sort").onchange = e => { S.sort = e.target.value; render(); };
 $("#chips").onclick = e => { const b = e.target.closest("[data-f]"); if (b) { S.filter = b.dataset.f; render(); } };
 $("#exportBtn").onclick = exportExcel;
+$("#sheetWrap").addEventListener("change", e => { if (e.target.classList.contains("cell")) saveCell(e.target); });
+$("#sheetWrap").addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("cell")) e.target.blur(); });
+$("#sheetWrap").addEventListener("focusout", () => setTimeout(() => { if (deferred && !($("#sheetWrap").contains(document.activeElement) && document.activeElement.classList.contains("cell"))) { deferred = false; render(); } }, 50));
 $("#main").addEventListener("click", e => {
   const act = e.target.closest("[data-act]")?.dataset.act;
-  if (act === "addParty") { $("#partyForm").reset(); return $("#partyDlg").showModal(); }
-  if (act === "sample") return sample();
+  if (act === "add") { $("#addForm").reset(); return $("#addDlg").showModal(); }
   if (act === "import") return openImport();
+  if (act === "sample") return sample();
+  const pay = e.target.closest("[data-pay]"); if (pay) { openDrawer(pay.dataset.pay); return $("#payForm").amount.focus(); }
+  if (e.target.closest("input,button,a,select")) return;
   const tr = e.target.closest("tr[data-id]"); if (tr) openDrawer(tr.dataset.id);
 });
 $("#scrim").onclick = closeDrawer;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && S.open && !document.querySelector("dialog[open]")) closeDrawer(); });
 $$("[data-signout]").forEach(b => b.onclick = () => { try { localStorage.removeItem("rbm-session"); } catch (e) {} location.reload(); });
 
+/* ---------- start ---------- */
 if (LIVE) {
   document.body.classList.add("live");
-  const enter = async (name, pw, remember) => {
-    const s = new SheetStore(pw); await s.call({action: "ping"});
-    if (remember) try { localStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {}
-    store = s; me = {name}; start();
-  };
+  const enter = async (name, pw, remember) => { const s = new SheetStore(pw); await s.call({action: "ping"}); if (remember) try { localStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {} store = s; me = {name}; start(); };
   $("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true; $("#lBtn").disabled = true;
     try { await enter($("#lName").value.trim(), $("#lPass").value, true); }
-    catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\". If it asks you to sign in, redeploy with access set to Anyone." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
+    catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\"." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
     $("#lBtn").disabled = false; };
   let saved = null; try { saved = JSON.parse(localStorage.getItem("rbm-session")); } catch (e) {}
   if (saved) enter(saved.name, saved.pw, false).catch(() => { localStorage.removeItem("rbm-session"); show("login"); }); else show("login");
 } else {
-  store = new LocalStore(); $("#demoBar").hidden = false;
-  me = {name: "Demo user"};
+  store = new LocalStore(); $("#demoBar").hidden = false; me = {name: "Demo user"};
   $("#demoReset").onclick = () => { if (confirm("Clear all demo data in this browser?")) { closeDrawer(); store.reset(); } };
   start();
 }
