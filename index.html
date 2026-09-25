@@ -177,6 +177,7 @@ table.fit .tag{font-size:10.5px;padding:0 5px}
     <div><h1>RBM Receivables</h1><p>Reality Building Materials Trading LLC</p></div>
     <label>Your name<input id="lName" name="rbm-user" required autocomplete="off" readonly placeholder="Shown on updates you make"></label>
     <label>Password<input type="password" id="lPass" name="rbm-key" required autocomplete="new-password" readonly></label>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:14px;cursor:pointer"><input type="checkbox" id="lKeep" style="width:auto;margin:0">Remember me on this device</label>
     <button class="btn" type="submit" id="lBtn">Sign in</button>
     <p id="lErr" class="red" hidden></p>
   </form>
@@ -283,26 +284,43 @@ class LocalStore {
   async remove(col, id) { delete this.d[col][id]; this._save(); }
   reset() { this.d = {customers: {}, entries: {}, payments: {}}; this._save(); }
 }
+let KEEP = false;                                   // true = "Remember me" (stays logged in on this device)
+const bag = () => KEEP ? localStorage : sessionStorage;
 class SheetStore {
   /* Fast mode: changes show instantly on screen and are saved to Google in the background (in order).
      The sheet re-syncs every 20 s, and the last copy is cached so the page opens instantly. */
   constructor(pw) { this.pw = pw; this.cb = null; this.q = Promise.resolve(); this.pending = 0; this.d = null; }
   async call(body) {
-    const r = await fetch(SCRIPT_URL, {method: "POST", body: JSON.stringify({...body, pw: this.pw})});
-    const j = await r.json(); if (!j.ok) throw new Error(j.error || "Request failed"); return j.data;
+    let r;
+    try { r = await fetch(SCRIPT_URL, {method: "POST", body: JSON.stringify({...body, pw: this.pw})}); }
+    catch (e) { const x = new Error("No connection to Google"); x.retry = true; throw x; }
+    const txt = await r.text(); let j;
+    try { j = JSON.parse(txt); }
+    catch (e) {   // Google sent an error web page instead of data (busy / temporary server error)
+      const t = (txt.match(/<title>([^<]*)<\/title>/i) || [])[1] || "";
+      const body2 = (txt.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 160);
+      const x = new Error("Google was busy (" + (t || body2 || "error page") + ")"); x.retry = true; x.detail = body2; throw x;
+    }
+    if (!j.ok) throw new Error(j.error || "Request failed"); return j.data;
   }
   badge() { const b = $("#sync"); if (b) b.textContent = this.pending ? "Saving…" : "Saved"; }
-  load(data) { this.d = Object.fromEntries(COLS.map(c => [c, Object.fromEntries((data[c] || []).map(o => [o.id, o]))])); try { sessionStorage.setItem("rbm-cache", JSON.stringify(data)); } catch (e) {} this.emit(); }
+  load(data) { this.d = Object.fromEntries(COLS.map(c => [c, Object.fromEntries((data[c] || []).map(o => [o.id, o]))])); try { bag().setItem("rbm-cache", JSON.stringify(data)); } catch (e) {} this.emit(); }
   emit() { if (this.cb && this.d) this.cb(Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])]))); }
-  async refresh() { if (this.pending) return; try { const d = await this.call({action: "all"}); if (!this.pending) this.load(d); } catch (e) { toast("Couldn't load data: " + e.message, true); } }
+  async refresh() { if (this.pending) return; try { const d = await this.call({action: "all"}); if (!this.pending) this.load(d); } catch (e) { if (/password/i.test(e.message)) { ["rbm-session", "rbm-cache"].forEach(k => { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (x) {} }); alert("The password has been changed. Please log in again."); return location.reload(); } toast("Couldn't load data: " + e.message, true); } }
   subscribe(cb) { this.cb = cb; this.emit(); if (!this.fresh) this.refresh(); this.fresh = false;
     const t = setInterval(() => { if (!document.hidden && !document.querySelector("dialog[open]")) this.refresh(); }, 20000);
     const vis = () => { if (!document.hidden) this.refresh(); }; document.addEventListener("visibilitychange", vis);
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", vis); }; }
   send(body) {
     this.pending++; this.badge();
-    this.q = this.q.then(() => this.call(body)).catch(e => { toast("Not saved: " + e.message + ". Reloading the latest data.", true); this.pending = 0; this.refresh(); })
-      .finally(() => { this.pending = Math.max(0, this.pending - 1); this.badge(); if (!this.pending) try { sessionStorage.setItem("rbm-cache", JSON.stringify(Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])])))); } catch (e) {} });
+    const attempt = async () => {   // retry up to 4 times: saves are safe to repeat
+      for (let i = 0; ; i++) {
+        try { return await this.call(body); }
+        catch (e) { if (!e.retry || i >= 3) throw e; $("#sync").textContent = "Retrying…"; await new Promise(r => setTimeout(r, 1500 * (i + 1))); }
+      }
+    };
+    this.q = this.q.then(attempt).catch(e => { console.warn(e.detail || e); toast("Not saved: " + e.message + ". Reloading the latest data.", true); this.pending = 0; this.refresh(); })
+      .finally(() => { this.pending = Math.max(0, this.pending - 1); this.badge(); if (!this.pending) try { bag().setItem("rbm-cache", JSON.stringify(Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])])))); } catch (e) {} });
     return Promise.resolve();
   }
   async upsert(col, o) { return this.upsertMany([[col, o]]); }
@@ -655,7 +673,7 @@ $("#main").addEventListener("click", e => {
 });
 $("#scrim").onclick = closeDrawer;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && S.open && !document.querySelector("dialog[open]")) closeDrawer(); });
-$$("[data-signout]").forEach(b => b.onclick = () => { try { sessionStorage.removeItem("rbm-session"); sessionStorage.removeItem("rbm-cache"); } catch (e) {} location.reload(); });
+$$("[data-signout]").forEach(b => b.onclick = () => { try { ["rbm-session", "rbm-cache"].forEach(k => { sessionStorage.removeItem(k); localStorage.removeItem(k); }); } catch (e) {} location.reload(); });
 
 /* ---------- start: always ask for login ---------- */
 window.addEventListener("beforeunload", e => { if (store && store.pending) { e.preventDefault(); e.returnValue = ""; } });
@@ -663,24 +681,24 @@ document.body.classList.add("live");
 const BACKEND_VERSION = 5;
 const enter = async (name, pw, remember) => {
   const st = new SheetStore(pw);
-  let cached = null; try { cached = JSON.parse(sessionStorage.getItem("rbm-cache")); } catch (e) {}
+  let cached = null; try { cached = JSON.parse(bag().getItem("rbm-cache")); } catch (e) {}
   if (!remember && cached) { st.load(cached); store = st; me = {name}; start(); return; }   // reopen: show cached copy instantly, refresh in background
   const data = await st.call({action: "all"});
   if (data.v !== BACKEND_VERSION) setTimeout(() => toast("Your Google Script (Code.gs) is an older version. Paste the latest Code.gs and deploy a New version for the faster sheet.", true), 600);
-  if (remember) try { sessionStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {}
+  if (remember) try { bag().setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {}
   st.load(data); st.fresh = true; store = st; me = {name}; start();
 };
 $("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true;
   if (!LIVE) { $("#lErr").textContent = "The Google Script link is missing. Paste it into SCRIPT_URL at the top of the script in index.html."; $("#lErr").hidden = false; return; }
   $("#lBtn").disabled = true;
-  try { await enter($("#lName").value.trim(), $("#lPass").value, true); }
+  try { KEEP = $("#lKeep").checked; await enter($("#lName").value.trim(), $("#lPass").value, true); }
   catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\"." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
   $("#lBtn").disabled = false; };
-try { localStorage.removeItem("rbm-session"); } catch (e) {}
 ["#lName", "#lPass"].forEach(id => { const el = $(id); el.value = ""; el.addEventListener("focus", () => el.removeAttribute("readonly"), {once: true}); });
-setTimeout(() => { $("#lName").value = ""; $("#lPass").value = ""; }, 300);
-let saved = null; try { saved = JSON.parse(sessionStorage.getItem("rbm-session")); } catch (e) {}
-if (LIVE && saved) enter(saved.name, saved.pw, false).catch(() => { try { sessionStorage.removeItem("rbm-session"); } catch (e) {} show("login"); });
+setTimeout(() => { ["#lName", "#lPass"].forEach(id => { const el = $(id); if (document.activeElement !== el && el.hasAttribute("readonly")) el.value = ""; }); }, 300);
+let saved = null;
+try { saved = JSON.parse(localStorage.getItem("rbm-session")); if (saved) KEEP = true; else saved = JSON.parse(sessionStorage.getItem("rbm-session")); } catch (e) {}
+if (LIVE && saved) enter(saved.name, saved.pw, false).catch(() => { try { bag().removeItem("rbm-session"); } catch (e) {} show("login"); });
 else show("login");
 </script>
 </body>
