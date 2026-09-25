@@ -186,7 +186,7 @@ table.fit .tag{font-size:10.5px;padding:0 5px}
   <header class="top">
     <div class="brand"><div class="mark">RBM</div><div><h1>Receivables</h1><p>Reality Building Materials Trading LLC</p></div></div>
     <div class="mnav"><button class="arrow" id="mPrev" aria-label="Previous month">‹</button><h2 id="mTitle"></h2><button class="arrow" id="mNext" aria-label="Next month">›</button><input type="month" id="mPick" aria-label="Pick month"><button class="btn ghost sm" id="mToday">This month</button></div>
-    <div class="who"><span id="whoName"></span><span id="sync" class="role live-only">Live</span><button class="btn ghost sm" data-signout>Log out</button></div>
+    <div class="who"><span id="whoName"></span><span id="sync" class="role live-only">Saved</span><button class="btn ghost sm" data-signout>Log out</button></div>
   </header>
   <section class="strip" id="strip"></section>
   <nav class="tabs"><button data-tab="sheet" class="on">Monthly sheet</button><button data-tab="log">Payments received</button><div class="filters" id="filtersRow">
@@ -284,19 +284,31 @@ class LocalStore {
   reset() { this.d = {customers: {}, entries: {}, payments: {}}; this._save(); }
 }
 class SheetStore {
-  constructor(pw) { this.pw = pw; this.cb = null; this.busy = 0; }
+  /* Fast mode: changes show instantly on screen and are saved to Google in the background (in order).
+     The sheet re-syncs every 20 s, and the last copy is cached so the page opens instantly. */
+  constructor(pw) { this.pw = pw; this.cb = null; this.q = Promise.resolve(); this.pending = 0; this.d = null; }
   async call(body) {
-    this.busy++; $("#sync").textContent = "Saving…";
-    try { const r = await fetch(SCRIPT_URL, {method: "POST", body: JSON.stringify({...body, pw: this.pw})});
-      const j = await r.json(); if (!j.ok) throw new Error(j.error || "Request failed"); return j.data; }
-    finally { if (--this.busy === 0) $("#sync").textContent = "Live"; }
+    const r = await fetch(SCRIPT_URL, {method: "POST", body: JSON.stringify({...body, pw: this.pw})});
+    const j = await r.json(); if (!j.ok) throw new Error(j.error || "Request failed"); return j.data;
   }
-  async refresh() { try { const d = await this.call({action: "all"}); this.cb && this.cb(d); } catch (e) { toast("Couldn't load data: " + e.message, true); } }
-  subscribe(cb) { this.cb = cb; this.refresh(); const t = setInterval(() => { if (!document.hidden && !document.querySelector("dialog[open]")) this.refresh(); }, 20000); return () => clearInterval(t); }
-  async upsert(col, o) { await this.call({action: "upsertMany", items: [[col, clean(o)]]}); await this.refresh(); }
-  async upsertMany(items) { await this.call({action: "upsertMany", items: clean(items)}); await this.refresh(); }
-  async update(col, id, patch) { await this.call({action: "update", col, id, patch: clean(patch)}); await this.refresh(); }
-  async remove(col, id) { await this.call({action: "remove", col, id}); await this.refresh(); }
+  badge() { const b = $("#sync"); if (b) b.textContent = this.pending ? "Saving…" : "Saved"; }
+  load(data) { this.d = Object.fromEntries(COLS.map(c => [c, Object.fromEntries((data[c] || []).map(o => [o.id, o]))])); try { sessionStorage.setItem("rbm-cache", JSON.stringify(data)); } catch (e) {} this.emit(); }
+  emit() { if (this.cb && this.d) this.cb(Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])]))); }
+  async refresh() { if (this.pending) return; try { const d = await this.call({action: "all"}); if (!this.pending) this.load(d); } catch (e) { toast("Couldn't load data: " + e.message, true); } }
+  subscribe(cb) { this.cb = cb; this.emit(); if (!this.fresh) this.refresh(); this.fresh = false;
+    const t = setInterval(() => { if (!document.hidden && !document.querySelector("dialog[open]")) this.refresh(); }, 20000);
+    const vis = () => { if (!document.hidden) this.refresh(); }; document.addEventListener("visibilitychange", vis);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", vis); }; }
+  send(body) {
+    this.pending++; this.badge();
+    this.q = this.q.then(() => this.call(body)).catch(e => { toast("Not saved: " + e.message + ". Reloading the latest data.", true); this.pending = 0; this.refresh(); })
+      .finally(() => { this.pending = Math.max(0, this.pending - 1); this.badge(); if (!this.pending) try { sessionStorage.setItem("rbm-cache", JSON.stringify(Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])])))); } catch (e) {} });
+    return Promise.resolve();
+  }
+  async upsert(col, o) { return this.upsertMany([[col, o]]); }
+  async upsertMany(items) { items = clean(items); items.forEach(([c, o]) => this.d[c][o.id] = {...(this.d[c][o.id] || {}), ...o}); this.emit(); return this.send({action: "upsertMany", items}); }
+  async update(col, id, patch) { patch = clean(patch); if (this.d[col][id]) Object.assign(this.d[col][id], patch); this.emit(); return this.send({action: "update", col, id, patch}); }
+  async remove(col, id) { delete this.d[col][id]; this.emit(); return this.send({action: "remove", col, id}); }
 }
 
 let store, me = null, unsub = null, deferred = false;
@@ -643,13 +655,21 @@ $("#main").addEventListener("click", e => {
 });
 $("#scrim").onclick = closeDrawer;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && S.open && !document.querySelector("dialog[open]")) closeDrawer(); });
-$$("[data-signout]").forEach(b => b.onclick = () => { try { sessionStorage.removeItem("rbm-session"); } catch (e) {} location.reload(); });
+$$("[data-signout]").forEach(b => b.onclick = () => { try { sessionStorage.removeItem("rbm-session"); sessionStorage.removeItem("rbm-cache"); } catch (e) {} location.reload(); });
 
 /* ---------- start: always ask for login ---------- */
+window.addEventListener("beforeunload", e => { if (store && store.pending) { e.preventDefault(); e.returnValue = ""; } });
 document.body.classList.add("live");
-const BACKEND_VERSION = 4;
-const enter = async (name, pw, remember) => { const st = new SheetStore(pw); const v = await st.call({action: "ping"});
-  if (v !== BACKEND_VERSION) setTimeout(() => toast("Your Google Script (Code.gs) is an older version. Paste the latest Code.gs and deploy a New version, otherwise saving and import won't work.", true), 600); if (remember) try { sessionStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {} store = st; me = {name}; start(); };
+const BACKEND_VERSION = 5;
+const enter = async (name, pw, remember) => {
+  const st = new SheetStore(pw);
+  let cached = null; try { cached = JSON.parse(sessionStorage.getItem("rbm-cache")); } catch (e) {}
+  if (!remember && cached) { st.load(cached); store = st; me = {name}; start(); return; }   // reopen: show cached copy instantly, refresh in background
+  const data = await st.call({action: "all"});
+  if (data.v !== BACKEND_VERSION) setTimeout(() => toast("Your Google Script (Code.gs) is an older version. Paste the latest Code.gs and deploy a New version for the faster sheet.", true), 600);
+  if (remember) try { sessionStorage.setItem("rbm-session", JSON.stringify({name, pw})); } catch (e) {}
+  st.load(data); st.fresh = true; store = st; me = {name}; start();
+};
 $("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true;
   if (!LIVE) { $("#lErr").textContent = "The Google Script link is missing. Paste it into SCRIPT_URL at the top of the script in index.html."; $("#lErr").hidden = false; return; }
   $("#lBtn").disabled = true;
