@@ -130,6 +130,22 @@ th.on{color:var(--ink)}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 0 12px}
 .filters label{display:flex;gap:6px;align-items:center;font-size:13px}.filters select{width:auto;padding:5px 8px;margin:0}
 .short{color:var(--amber)}
+/* ---- loading screen ---- */
+.spin{width:42px;height:42px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--green);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.5s}}
+.lbar{width:100%;height:6px;background:var(--bg);border-radius:4px;overflow:hidden}.lbar span{display:block;height:100%;width:0;background:var(--green);transition:width .25s linear}
+#loadMsg{min-height:2.6em}
+/* ---- month picture: 1 + 2 - 3 = 4 ---- */
+.strip{display:block!important}
+.flow{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap}
+.flow .st{flex:1 1 160px;background:var(--bg);border-radius:8px;padding:10px 12px;position:relative;border-left:4px solid var(--line)}
+.flow .st dt{font-size:12.5px;color:var(--muted);font-weight:600}.flow .st dd{margin:2px 0 0;font:700 24px/1.1 var(--num)}.flow .st small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.flow .k{position:absolute;top:8px;right:10px;font:700 12px var(--num);color:var(--muted)}
+.flow .s1{border-color:var(--steel)}.flow .s2{border-color:var(--red);background:var(--red-soft)}.flow .s2 dd{color:var(--red)}.flow .s3{border-color:var(--green)}.flow .s3 dd{color:var(--green)}.flow .s4{border-color:var(--ink)}
+.flow .op{align-self:center;font:700 22px var(--num);color:var(--muted)}
+.strip .bar{margin:10px 0 6px!important;height:8px!important}
+.sub2{display:flex;gap:6px 22px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}.sub2 b{color:var(--ink);font-family:var(--num);font-size:14px}.sub2 b.red{color:var(--red)}
 /* ---- one-screen compact layout ---- */
 .top{flex-wrap:nowrap;gap:12px}.top .mnav{flex:1;justify-content:center}.mnav input{padding:4px 6px}
 .strip{grid-template-columns:230px 1fr!important}
@@ -172,6 +188,15 @@ table.fit .tag{font-size:10.5px;padding:0 5px}
   <button class="btn sm ghost" id="demoReset">Clear demo data</button>
 </div>
 
+<section id="loading" class="gate" hidden>
+  <div class="box" style="text-align:center;justify-items:center">
+    <div class="spin" aria-hidden="true"></div>
+    <h1 id="loadTitle">Loading receivables…</h1>
+    <p id="loadMsg">Connecting to the Google Sheet</p>
+    <div class="lbar"><span id="loadBar"></span></div>
+    <p class="meta" id="loadTime">0 s</p>
+  </div>
+</section>
 <section id="login" class="gate" hidden>
   <form id="loginForm" class="box" autocomplete="off">
     <div><h1>RBM Receivables</h1><p>Reality Building Materials Trading LLC</p></div>
@@ -269,7 +294,18 @@ const inMonth = (iso, m) => iso >= m + "-01" && iso <= monthEnd(m);
 const normName = s => String(s || "").toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
 const entryId = (cid, m) => cid + "_" + m;
 function toast(msg, err) { const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : ""); clearTimeout(t._h); t._h = setTimeout(() => t.className = "", err ? 7000 : 2400); }
-function show(id) { ["login", "main"].forEach(x => $("#" + x).hidden = x !== id); }
+function show(id) { ["loading", "login", "main"].forEach(x => $("#" + x).hidden = x !== id); if (id !== "loading") stopLoading(); }
+let loadT = null;
+function startLoading(title) {
+  show("loading"); $("#loadTitle").textContent = title || "Loading receivables…";
+  const t0 = Date.now(), steps = [[0, "Connecting to the Google Sheet"], [3, "Reading customers, monthly figures and payments"], [7, "Google is waking up the sheet. The first login of the day takes longer"], [15, "Almost there, please keep this page open"], [30, "This is taking longer than usual. Check your internet connection"]];
+  clearInterval(loadT);
+  const tick = () => { const s = (Date.now() - t0) / 1000; $("#loadTime").textContent = Math.floor(s) + " s";
+    $("#loadMsg").textContent = steps.filter(x => s >= x[0]).pop()[1];
+    $("#loadBar").style.width = Math.min(95, 100 * (1 - Math.exp(-s / 6))) + "%"; };
+  tick(); loadT = setInterval(tick, 250);
+}
+function stopLoading() { clearInterval(loadT); loadT = null; }
 
 /* ---------- storage ---------- */
 const COLS = ["customers", "entries", "payments"];
@@ -316,10 +352,10 @@ class SheetStore {
   badge() { const b = $("#sync"); if (b) b.textContent = this.pending ? "Saving…" : "Saved"; }
   load(data) { data = data || {}; this.d = Object.fromEntries(COLS.map(c => [c, Object.fromEntries((data[c] || []).map(o => [o.id, o]))])); try { bag().setItem("rbm-cache", JSON.stringify(data)); } catch (e) {} this.emit(); }
   emit() { if (this.cb && this.d) this.cb(Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])]))); }
-  async refresh() { if (this.pending || this.loading) return; this.loading = true;
+  async refresh() { if (this.pending || this.loading) return; this.loading = true; const bd = $("#sync"); if (bd) bd.textContent = "Updating…";
     try { let d; for (let i = 0; ; i++) { try { d = await this.call({action: "all"}); break; } catch (e) { if (!e.retry || i >= 2) throw e; await new Promise(r => setTimeout(r, 2000 * (i + 1))); } }
       if (!this.pending) this.load(d); this.fails = 0; } catch (e) { if (/password/i.test(e.message)) { ["rbm-session", "rbm-cache"].forEach(k => { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (x) {} }); alert("The password has been changed. Please log in again."); return location.reload(); } console.warn(e.detail || e); this.fails = (this.fails || 0) + 1; if (this.fails === 1 || this.fails % 5 === 0) toast("Couldn't load the latest data. " + e.message, true); }
-    finally { this.loading = false; } }
+    finally { this.loading = false; this.badge(); } }
   subscribe(cb) { this.cb = cb; this.emit(); if (!this.fresh) this.refresh(); this.fresh = false;
     const t = setInterval(() => { if (!document.hidden && !document.querySelector("dialog[open]")) this.refresh(); }, 20000);
     const vis = () => { if (!document.hidden) this.refresh(); }; document.addEventListener("visibilitychange", vis);
@@ -343,7 +379,7 @@ class SheetStore {
 }
 
 let store, me = null, unsub = null, deferred = false;
-const S = {customers: [], entries: [], payments: [], month: thisMonth(), filter: "all", q: "", fMonth: "", fDays: "", fRem: "", sortKey: "overdue", sortDir: -1, tab: "sheet", open: null};
+const S = {customers: [], entries: [], payments: [], month: thisMonth(), filter: "all", q: "", fMonth: "", fDays: "", fRem: "", sortKey: "balanceDue", sortDir: -1, tab: "sheet", open: null};
 
 /* ---------- engine ----------
    Carried forward = all earlier dues minus all earlier payments (automatic).
@@ -358,32 +394,69 @@ function ageStart(dm) { return AGE_FROM_DAY >= 28 ? monthEnd(dm) : dm + "-" + pa
 // PDC = post-dated cheque. Not counted as received (or against expected) until its cheque date arrives.
 const isPdc = p => p.mode === "PDC cheque";
 const eff = p => isPdc(p) ? (p.chequeDate || "9999-12-31") : p.date;
+function dueDateOf(dm, c) { return addDays(ageStart(dm), +(c.creditDays || 0)); }
+const addDays = (iso, n) => { const [y, m, d] = iso.split("-").map(Number); return isoOf(new Date(y, m - 1, d + (+n || 0))); };
+/* The month picture for one customer:
+   1 DUE THIS MONTH  = dues whose credit period ends in this month (+ PDCs maturing this month)
+   2 OVERDUE (red)   = dues whose credit period ended before this month and are still unpaid
+   3 RECEIVED        = current payments this month (+ PDCs that matured this month)
+   4 BALANCE DUE     = 1 + 2 - 3
+   A PDC moves the dues it covers to its maturing date. If it bounces, the dues come back. */
 function calc(c, m) {
-  const es = S.entries.filter(e => e.customerId === c.id), ps = S.payments.filter(p => p.customerId === c.id && !p.bounced);
-  const end = monthEnd(m), asOf = end < today() ? end : today();
-  const carried = r2(total(es.filter(e => e.month < m), "dues") - total(ps.filter(p => eff(p) < m + "-01")));
+  const start = m + "-01", end = monthEnd(m), td = today(), asOf = end < td ? end : td;
+  const es = S.entries.filter(e => e.customerId === c.id && e.month <= m);
+  const ps = S.payments.filter(p => p.customerId === c.id && !p.bounced);
   const e = entryOf(c.id, m) || {};
-  const dues = +e.dues || 0, received = total(ps.filter(p => eff(p) >= m + "-01" && eff(p) <= asOf));
-  const pdcs = ps.filter(p => isPdc(p) && p.date <= asOf && eff(p) > asOf), pdcHand = total(pdcs);
-  const totalDue = r2(carried + dues), carryNext = r2(totalDue - received);
-  const expected = e.expected ?? null, short = expected != null ? r2(Math.max(0, expected - received)) : null;
-  // ageing by due month (FIFO)
-  const bk = {}; es.filter(x => x.month <= m && +x.dues).forEach(x => { const dm = x.dueMonth || x.month; bk[dm] = r2((bk[dm] || 0) + (+x.dues)); });
-  let pool = total(ps.filter(p => eff(p) <= asOf)); const open = [];
-  Object.keys(bk).sort().forEach(dm => { const cover = Math.min(pool, bk[dm]); pool = r2(pool - cover); const amt = r2(bk[dm] - cover);
-    if (amt > 0.009) { const age = Math.max(0, daysBetween(ageStart(dm), asOf)); const late = c.creditDays != null && c.creditDays !== "" ? age > +c.creditDays : dm < m; open.push({dm, amt, age, late}); } });
-  const overdue = r2(open.filter(o => o.late).reduce((s, o) => s + o.amt, 0));
-  const oldest = open[0] || null;
-  const overLimit = +c.creditLimit > 0 && carryNext > +c.creditLimit;
-  return {c, e, carried, dues, dueMonth: e.dueMonth || m, received, pdcHand, pdcs, totalDue, carryNext, expected, short, open, oldest, overdue, overLimit, remarks: e.remarks || "", by: e.by || "", at: e.at || null};
+  // buckets of dues by month, each with the date its credit period ends
+  const bk = {}; es.forEach(x => { if (+x.dues) { const dm = x.dueMonth || x.month; bk[dm] = r2((bk[dm] || 0) + (+x.dues)); } });
+  let buckets = Object.keys(bk).sort().map(dm => ({dm, due: dueDateOf(dm, c), amt: bk[dm], pdc: false}));
+  // PDCs (received on or before month end) take over the oldest dues and move them to the maturing date
+  const pdcs = ps.filter(p => isPdc(p) && p.date <= end).sort((a, b) => eff(a).localeCompare(eff(b)));
+  pdcs.forEach(p => { let left = +p.amount;
+    for (const b of buckets) { if (b.pdc || left <= 0) continue; const take = Math.min(left, b.amt); b.amt = r2(b.amt - take); left = r2(left - take); }
+    buckets.push({dm: eff(p).slice(0, 7), due: eff(p), amt: r2(+p.amount), pdc: true, pay: p}); });
+  buckets = buckets.filter(b => b.amt > 0.009).sort((a, b) => a.due.localeCompare(b.due));
+  const normal = buckets.filter(b => !b.pdc), pdcB = buckets.filter(b => b.pdc);
+  // current payments before this month clear the oldest dues first
+  const cur = ps.filter(p => !isPdc(p));
+  let pool = total(cur.filter(p => p.date < start));
+  normal.forEach(b => { const t = Math.min(pool, b.amt); pool = r2(pool - t); b.open = r2(b.amt - t); });
+  pdcB.forEach(b => { b.open = eff(b.pay) < start ? 0 : b.amt; });
+  const overdueStart = r2(normal.filter(b => b.due < start).reduce((s, b) => s + b.open, 0));
+  const dueNormal = r2(normal.filter(b => b.due >= start && b.due <= end).reduce((s, b) => s + b.open, 0));
+  const pdcThis = pdcB.filter(b => b.due >= start && b.due <= end);
+  const pdcThisAmt = total(pdcThis, "amt");
+  const dueThis = r2(dueNormal + pdcThisAmt);
+  // received this month
+  const recCur = total(cur.filter(p => p.date >= start && p.date <= asOf));
+  const pdcCleared = total(pdcThis.filter(b => b.due <= asOf), "amt");
+  const received = r2(recCur + pdcCleared);
+  const pdcMaturing = r2(pdcThisAmt - pdcCleared);            // PDCs still to mature this month
+  const pdcLater = total(pdcB.filter(b => b.due > end), "amt"); // PDCs held for later months
+  // current receipts pay overdue first, then this month's dues
+  let rp = recCur;
+  const odPaid = Math.min(rp, overdueStart); rp = r2(rp - odPaid);
+  const overdue = r2(overdueStart - odPaid);
+  const duePaid = Math.min(rp, dueNormal); rp = r2(rp - duePaid);
+  const balanceDue = r2(overdue + (dueNormal - duePaid) + pdcMaturing);
+  const notYet = r2(Math.max(0, normal.filter(b => b.due > end).reduce((s, b) => s + b.open, 0) - rp) + pdcLater);
+  const totalOut = r2(overdue + (dueNormal - duePaid) + pdcMaturing + notYet);
+  const oldestB = normal.find(b => b.due < start && b.open > 0.009);
+  const oldest = overdue > 0.009 && oldestB ? {dm: oldestB.dm, age: Math.max(0, daysBetween(oldestB.due, asOf)), late: true} : null;
+  const overLimit = +c.creditLimit > 0 && totalOut > +c.creditLimit;
+  const expected = e.expected ?? null;
+  return {c, e, dues: +e.dues || 0, dueMonth: e.dueMonth || m, dueThis, overdue, overdueStart, received, recCur, pdcCleared, balanceDue, pdcMaturing, pdcLater, notYet, totalOut,
+    expected, short: expected != null ? r2(Math.max(0, expected - received)) : null, buckets, oldest, overLimit, remarks: e.remarks || "", by: e.by || "", at: e.at || null};
 }
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00") - new Date(a + "T00:00")) / 864e5);
 
 /* ---------- filters + sorting ---------- */
-const CHIPS = {all: "All", overdue: "Above credit days", limit: "Over limit", short: "Short", met: "Collected", pdc: "PDC in hand", noexp: "No expected", clear: "Cleared"};
-const chipTest = {all: () => true, overdue: r => r.overdue > 0.009, limit: r => r.overLimit, short: r => r.short > 0.009, met: r => r.expected > 0 && r.received >= r.expected - 0.009, pdc: r => r.pdcHand > 0.009, noexp: r => r.expected == null && r.totalDue > 0.009, clear: r => r.carryNext <= 0.009};
-const SORTS = {name: r => r.c.name.toLowerCase(), carried: r => r.carried, dues: r => r.dues, dueMonth: r => r.dueMonth, totalDue: r => r.totalDue, expected: r => r.expected ?? -1, received: r => r.received, short: r => r.short ?? -1,
-  carryNext: r => r.carryNext, oldest: r => r.oldest ? r.oldest.age : -1, overdue: r => r.overdue, creditDays: r => r.c.creditDays ?? -1, creditLimit: r => r.c.creditLimit ?? -1, remarks: r => r.remarks.toLowerCase()};
+const CHIPS = {all: "All", overdue: "Overdue", due: "Due this month", bal: "Balance due", rec: "Received", pdc: "PDC", limit: "Over limit", clear: "Cleared"};
+const chipTest = {all: () => true, overdue: r => r.overdue > 0.009, due: r => r.dueThis > 0.009, bal: r => r.balanceDue > 0.009, rec: r => r.received > 0.009,
+  pdc: r => r.pdcMaturing + r.pdcLater + r.pdcCleared > 0.009, limit: r => r.overLimit, clear: r => r.totalOut <= 0.009};
+const SORTS = {name: r => r.c.name.toLowerCase(), dueThis: r => r.dueThis, overdue: r => r.overdue, received: r => r.received, balanceDue: r => r.balanceDue,
+  pdc: r => r.pdcMaturing + r.pdcLater, expected: r => r.expected ?? -1, dues: r => r.dues, totalOut: r => r.totalOut, oldest: r => r.oldest ? r.oldest.age : -1,
+  creditDays: r => r.c.creditDays ?? -1, remarks: r => r.remarks.toLowerCase()};
 function applyFilters(rows) {
   const q = S.q.toLowerCase();
   return rows.filter(r => chipTest[S.filter](r)
@@ -405,20 +478,20 @@ function render() {
 }
 function strip(rows) {
   const t = k => r2(rows.reduce((s, r) => s + (+r[k] || 0), 0));
-  const exp = t("expected"), rec = t("received"), od = t("overdue"), base = exp > 0 ? exp : t("totalDue");
-  const pct = base > 0 ? Math.min(100, rec / base * 100) : 0;
-  const expRec = r2(rows.filter(r => r.expected > 0).reduce((s, r) => s + Math.min(r.received, r.expected), 0));
-  $("#strip").innerHTML = `<div class="collect"><span class="pct">${pct.toFixed(1)}%</span><p>of expected collected<br><b>${fmt(rec)}</b> of <b>${fmt(exp)}</b> AED</p></div>
+  const due = t("dueThis"), od = t("overdueStart"), rec = t("received"), bal = t("balanceDue"), base = r2(due + od);
+  const pct = base > 0 ? Math.min(100, rec / base * 100) : 0, exp = t("expected");
+  const n = f => rows.filter(f).length;
+  $("#strip").innerHTML = `<div class="flow">
+      <div class="st s1"><span class="k">1</span><dt>Due this month</dt><dd>${fmt(due)}</dd><small>${n(r => r.dueThis > 0.009)} customers${t("pdcMaturing") + t("pdcCleared") > 0.009 ? `, incl. PDC ${fmt(t("pdcMaturing") + t("pdcCleared"))}` : ""}</small></div>
+      <span class="op">+</span>
+      <div class="st s2"><span class="k">2</span><dt>Overdue (not paying)</dt><dd>${fmt(od)}</dd><small>${n(r => r.overdueStart > 0.009)} customers past credit days</small></div>
+      <span class="op">−</span>
+      <div class="st s3"><span class="k">3</span><dt>Received</dt><dd>${fmt(rec)}</dd><small>${pct.toFixed(1)}% collected</small></div>
+      <span class="op">=</span>
+      <div class="st s4"><span class="k">4</span><dt>Balance due</dt><dd>${fmt(bal)}</dd><small>${t("pdcMaturing") > 0.009 ? `PDC ${fmt(t("pdcMaturing"))} still to mature` : `to collect in ${mLabel(S.month).split(" ")[0]}`}</small></div>
+    </div>
     <div class="bar" aria-hidden="true"><span style="width:${pct}%"></span></div>
-    <dl class="figs">
-      <div><dt>Expected this month</dt><dd>${fmt(exp)}</dd></div>
-      <div><dt>Received</dt><dd class="green">${fmt(rec)}</dd></div>
-      <div><dt>Short of expected</dt><dd class="short">${fmt(t("short"))}</dd><small>${rows.filter(r => r.short > 0.009).length} customers</small></div>
-      <div><dt>Total outstanding</dt><dd>${fmt(t("totalDue"))}</dd><small>incl. ${fmt(t("carried"))} b/f</small></div>
-      <div class="b"><dt>PDCs in hand</dt><dd>${fmt(t("pdcHand"))}</dd><small>not counted yet</small></div>
-      <div><dt>Carry forward</dt><dd>${fmt(t("carryNext"))}</dd></div>
-      <div class="r"><dt>Above credit days</dt><dd>${fmt(od)}</dd><small>${rows.filter(r => r.overdue > 0.009).length} customers</small></div>
-    </dl>`;
+    <div class="sub2"><span>Still overdue: <b class="red">${fmt(t("overdue"))}</b></span><span>PDCs for later months: <b>${fmt(t("pdcLater"))}</b></span><span>Not yet due: <b>${fmt(t("notYet"))}</b></span><span>Total outstanding: <b>${fmt(t("totalOut"))}</b></span>${exp ? `<span>Expected target: <b>${fmt(exp)}</b></span>` : ""}</div>`;
 }
 function fillFilterSelects(rows) {
   const months = [...new Set(rows.filter(r => r.oldest).map(r => r.oldest.dm))].sort();
@@ -439,21 +512,21 @@ function sheet(rows) {
   const mb = monthsBack(S.month, 18);
   const opts = sel => mb.map(m => `<option value="${m}" ${m === sel ? "selected" : ""}>${mShort(m)}</option>`).join("") + (mb.includes(sel) ? "" : `<option value="${sel}" selected>${mShort(sel)}</option>`);
   const th = (k, label, cls = "") => `<th class="sortable ${cls} ${S.sortKey === k ? "on" : ""}" data-sort="${k}">${label}${S.sortKey === k ? `<span class="arr">${S.sortDir > 0 ? "▲" : "▼"}</span>` : ""}</th>`;
-  $("#sheetWrap").innerHTML = `<table class="fit"><colgroup><col style="width:2.5%"><col style="width:15%"><col style="width:7.5%"><col style="width:9%"><col style="width:8%"><col style="width:8%"><col style="width:7.5%"><col style="width:7.5%"><col style="width:8%"><col style="width:9%"><col style="width:6.5%"><col></colgroup>
-  <thead><tr><th>#</th>${th("name", "Customer")}${th("carried", "Carried fwd", "n")}${th("dues", "New dues<br><small>& month</small>", "n")}${th("totalDue", "Total<br>outstanding", "n")}${th("expected", "Expected", "n")}${th("received", "Received", "n")}${th("short", "Short of<br>expected", "n")}${th("carryNext", "Carry<br>forward", "n")}${th("oldest", "Oldest due<br><small>above credit</small>")}${th("creditDays", "Credit days<br><small>& limit</small>", "n")}${th("remarks", "Remarks")}</tr></thead><tbody>
+  $("#sheetWrap").innerHTML = `<table class="fit"><colgroup><col style="width:2.5%"><col style="width:15%"><col style="width:8.5%"><col style="width:9%"><col style="width:8.5%"><col style="width:8.5%"><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:6.5%"><col></colgroup>
+  <thead><tr><th>#</th>${th("name", "Customer")}${th("dueThis", "① Due this<br>month", "n")}${th("overdue", "② Overdue<br><small>past credit days</small>", "n")}${th("received", "③ Received", "n")}${th("balanceDue", "④ Balance<br>due", "n")}${th("pdc", "PDC<br><small>maturing</small>", "n")}${th("expected", "Expected", "n")}${th("dues", "New dues<br><small>& month</small>", "n")}${th("totalOut", "Total<br>outstanding", "n")}${th("creditDays", "Credit days<br><small>& limit</small>", "n")}${th("remarks", "Remarks")}</tr></thead><tbody>
   ${list.map((r, i) => `<tr data-id="${r.c.id}" class="${r.overdue > 0.009 ? "od" : ""}"><td class="muted">${i + 1}</td>
     <td class="party">${esc(r.c.name)}${r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : ""}<small>${esc(r.c.contact || "")}</small></td>
-    <td class="n">${cr(r.carried)}</td>
+    <td class="n">${fz(r.dueThis)}${r.pdcMaturing + r.pdcCleared > 0.009 ? `<span class="pdcline">incl. PDC</span>` : ""}</td>
+    <td class="n red">${r.overdueStart > 0.009 ? `<b>${fmt(r.overdue)}</b>${r.oldest ? `<span class="age red">since ${mShort(r.oldest.dm)}, ${r.oldest.age} days late</span>` : `<span class="age">was ${fmt(r.overdueStart)}</span>`}` : ""}</td>
+    <td class="n green">${fz(r.received)}<button class="addpay" data-pay="${r.c.id}" title="Record payment">+</button></td>
+    <td class="n ${r.overdue > 0.009 ? "red" : ""}"><b>${fz(r.balanceDue)}</b></td>
+    <td class="n">${r.pdcMaturing > 0.009 ? `<span class="pdcline" style="font-size:13px">${fmt(r.pdcMaturing)}</span>` : ""}${r.pdcLater > 0.009 ? `<span class="age">later ${fmt(r.pdcLater)}</span>` : ""}</td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="expected" inputmode="decimal" value="${v(r.expected)}" aria-label="Expected" placeholder="0.00"></td>
     <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="dues" inputmode="decimal" value="${v(r.e.dues)}" aria-label="New dues" placeholder="0.00"><select class="cell mini" data-id="${r.c.id}" data-f="dueMonth" aria-label="Dues month">${opts(r.dueMonth)}</select></td>
-    <td class="n"><b>${cr(r.totalDue)}</b></td>
-    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="expected" inputmode="decimal" value="${v(r.expected)}" aria-label="Expected" placeholder="0.00" style="font-weight:600"></td>
-    <td class="n green">${fz(r.received)}<button class="addpay" data-pay="${r.c.id}" title="Record payment">+</button>${r.pdcHand > 0.009 ? `<span class="pdcline" title="PDC in hand, not counted yet">PDC ${fmt(r.pdcHand)}</span>` : ""}</td>
-    <td class="n short">${r.short > 0.009 ? fmt(r.short) : r.expected > 0 ? `<span class="green">Done</span>` : ""}</td>
-    <td class="n"><b>${cr(r.carryNext)}</b></td>
-    <td>${r.oldest ? `${mShort(r.oldest.dm)}<span class="age ${r.oldest.late ? "red" : ""}">${r.oldest.age}${r.c.creditDays != null ? "/" + r.c.creditDays : ""} days</span>${r.overdue > 0.009 ? `<b class="red num">${fmt(r.overdue)}</b>` : ""}` : `<span class="muted">–</span>`}</td>
+    <td class="n">${fz(r.totalOut)}${r.notYet > 0.009 ? `<span class="age">not yet due ${fmt(r.notYet)}</span>` : ""}</td>
     <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="creditDays" inputmode="numeric" value="${r.c.creditDays ?? ""}" aria-label="Credit days" placeholder="days"><input class="cell mini" data-id="${r.c.id}" data-f="creditLimit" inputmode="decimal" value="${v(r.c.creditLimit)}" aria-label="Credit limit" placeholder="limit"></td>
     <td class="edit"><textarea class="cell txt" rows="2" data-id="${r.c.id}" data-f="remarks" placeholder="Add remark" aria-label="Remarks">${esc(r.remarks)}</textarea></td></tr>`).join("")}
-  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("carried")}</td><td class="n">${t("dues")}</td><td class="n">${t("totalDue")}</td><td class="n">${t("expected")}</td><td class="n">${t("received")}</td><td class="n">${t("short")}</td><td class="n">${t("carryNext")}</td><td class="n red">${t("overdue")}</td><td></td><td></td></tr></tfoot></table>`;
+  </tbody><tfoot><tr><td></td><td>Total (${list.length})</td><td class="n">${t("dueThis")}</td><td class="n red">${t("overdue")}</td><td class="n">${t("received")}</td><td class="n">${t("balanceDue")}</td><td class="n">${t("pdcMaturing")}</td><td class="n">${t("expected")}</td><td class="n">${t("dues")}</td><td class="n">${t("totalOut")}</td><td></td><td></td></tr></tfoot></table>`;
 }
 async function saveCell(inp) {
   const cid = inp.dataset.id, f = inp.dataset.f, c = S.customers.find(x => x.id === cid); if (!c) return;
@@ -487,15 +560,15 @@ function openDrawer(id) {
   <div class="dsec"><div id="dFig"></div><div class="acts" id="dActs"></div></div>
   <div class="dsec"><h4>Record payment</h4><form id="payForm" class="g2">
     <div class="full seg" role="radiogroup" aria-label="Payment type"><label><input type="radio" name="ptype" value="current" checked>Current payment</label><label><input type="radio" name="ptype" value="pdc">PDC</label></div>
-    <p class="meta full" id="ptypeNote">Counts as received now, against this month's expected.</p>
+    <p class="meta full" id="ptypeNote">Counts as received now.</p>
     <label>Amount (AED)<input name="amount" inputmode="decimal" required></label>
     <label>Date received<input name="date" type="date" required value="${defDate()}"></label>
     <label class="curf">Mode<select name="mode">${["Bank transfer", "Online transfer", "Cash", "Cheque", "Card"].map(m => `<option>${m}</option>`).join("")}</select></label>
-    <label class="pdcf" hidden>Cheque date<input name="chequeDate" type="date"></label>
+    <label class="pdcf" hidden>Maturing date<input name="chequeDate" type="date"></label>
     <label>Reference / cheque no.<input name="ref"></label>
-    <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn green" type="submit">Record payment</button><button class="btn ghost" type="button" id="fillBal">Fill expected amount</button></div></form></div>
+    <div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn green" type="submit">Record payment</button><button class="btn ghost" type="button" id="fillBal">Fill balance due</button></div></form></div>
   <div class="dsec"><details open><summary>Payments</summary><div id="dPays"></div></details></div>
-  <div class="dsec"><details open><summary>Unpaid dues by month</summary><div id="dHist"></div></details></div>
+  <div class="dsec"><details open><summary>Unpaid dues and when they fall due</summary><div id="dHist"></div></details></div>
   <div class="dsec"><details><summary>Customer details</summary><form id="editForm" class="g2">
     <label class="full">Customer name<input name="name" required value="${esc(c.name)}"></label>
     <label>Credit days approved<input name="creditDays" inputmode="numeric" value="${c.creditDays ?? ""}"></label>
@@ -510,29 +583,31 @@ function refreshDrawer() {
   const r = calc(c, S.month);
   $("#dName").innerHTML = esc(c.name) + (r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : "");
   $("#dSub").textContent = [c.creditDays != null ? c.creditDays + " days credit" : "", c.creditLimit ? "limit AED " + fmt(c.creditLimit) : "", c.contact].filter(Boolean).join(", ");
-  $("#dFig").innerHTML = `<dl class="dfigs"><div><dt>Carried forward</dt><dd>${cr(r.carried)}</dd></div><div><dt>New dues</dt><dd>${fmt(r.dues)}</dd></div><div><dt>Received (${mLabel(S.month).split(" ")[0]})</dt><dd class="green">${fmt(r.received)}</dd></div>
-    <div><dt>Expected</dt><dd>${r.expected != null ? fmt(r.expected) : "–"}</dd></div><div class="${r.overdue > 0.009 ? "hot" : ""}"><dt>Above credit days</dt><dd>${fmt(r.overdue)}</dd></div><div><dt>Carry forward</dt><dd>${cr(r.carryNext)}</dd></div></dl>`;
-  const phone = (c.contact || "").replace(/\D/g, "").replace(/^0/, "971"), amt = r.overdue > 0.009 ? r.overdue : r.carryNext;
+  $("#dFig").innerHTML = `<dl class="dfigs"><div><dt>① Due this month</dt><dd>${fmt(r.dueThis)}</dd></div><div class="${r.overdue > 0.009 ? "hot" : ""}"><dt>② Overdue</dt><dd>${fmt(r.overdueStart)}</dd></div><div><dt>③ Received</dt><dd class="green">${fmt(r.received)}</dd></div>
+    <div><dt>④ Balance due</dt><dd>${fmt(r.balanceDue)}</dd></div><div><dt>PDC maturing</dt><dd>${fmt(r.pdcMaturing + r.pdcLater)}</dd></div><div><dt>Total outstanding</dt><dd>${fmt(r.totalOut)}</dd></div></dl>`;
+  const phone = (c.contact || "").replace(/\D/g, "").replace(/^0/, "971"), amt = r.overdue > 0.009 ? r.overdue : r.balanceDue;
   const msg = `Dear ${c.name},\n\nGreetings from ${COMPANY}.\n\nAs per our records, AED ${fmt(amt)} is ${r.overdue > 0.009 ? "overdue" : "due"} on your account. Kindly arrange the payment at the earliest.\n\nIf already paid, please share the payment details so we can update our records.\n\nThank you.`;
   $("#dActs").innerHTML = (phone.length >= 9 && amt > 0.009 ? `<a class="btn green sm" target="_blank" rel="noopener" href="https://wa.me/${phone}?text=${encodeURIComponent(msg)}">WhatsApp reminder</a>` : "") + (phone ? ` <a class="btn ghost sm" href="tel:+${phone}">Call</a>` : "");
   const pays = S.payments.filter(x => x.customerId === c.id).sort((a, b) => b.date.localeCompare(a.date));
   $("#dPays").innerHTML = pays.length ? pays.map(x => `<div class="item"><div>${x.bounced ? `<span class="tag t-bounced">Bounced</span>` : ""}${x.mode === "PDC cheque" ? `<span class="tag t-pdc">PDC</span>` : ""}<b>${fDate(x.date)}</b>, ${esc(x.mode)}${x.ref ? ", " + esc(x.ref) : ""}
       <div class="sub">${isPdc(x) ? (eff(x) > today() ? `In hand, cheque date ${x.chequeDate ? fDate(x.chequeDate) : "not set"}. ` : `Cleared ${fDate(x.chequeDate)}. `) : ""}Recorded by ${esc(x.by || "–")}</div></div><div class="amt ${x.bounced ? "red" : "green"}">${fmt(x.amount)}</div>
       <div class="ops">${!x.bounced && isPdc(x) && eff(x) > today() ? `<button class="btn sm ghost" data-clear="${x.id}">Mark cleared today</button>` : ""}${!x.bounced && /cheque/i.test(x.mode) ? `<button class="btn sm ghost" data-bounce="${x.id}">Mark bounced</button>` : ""}<button class="btn sm ghost" data-delpay="${x.id}">Delete</button></div></div>`).join("") : `<p class="muted">No payments yet.</p>`;
-  $("#dHist").innerHTML = r.open.length ? r.open.slice().reverse().map(o => `<div class="item ${o.late ? "od" : ""}"><div><b>${mLabel(o.dm)}</b> ${o.late ? `<span class="tag t-od">Above credit days</span>` : ""}<div class="sub">${o.age} days old${c.creditDays != null ? `, credit allowed ${c.creditDays} days` : ""}</div></div><div class="amt">${fmt(o.amt)}</div></div>`).join("") : `<p class="muted">Nothing unpaid.</p>`;
+  const td = today(); $("#dHist").innerHTML = r.buckets.filter(b => (b.open ?? b.amt) > 0.009).length ? r.buckets.filter(b => (b.open ?? b.amt) > 0.009).map(b => { const late = !b.pdc && b.due < td;
+    return `<div class="item ${late ? "od" : ""}"><div><b>${b.pdc ? "PDC " + esc(b.pay.ref || "") : mLabel(b.dm) + " dues"}</b> ${b.pdc ? `<span class="tag t-pdc">Matures ${fDate(b.due)}</span>` : late ? `<span class="tag t-od">${daysBetween(b.due, td)} days past credit</span>` : `<span class="tag t-due">Due by ${fDate(b.due)}</span>`}</div><div class="amt">${fmt(b.open ?? b.amt)}</div></div>`; }).join("") : `<p class="muted">Nothing unpaid.</p>`;
 }
 function wire(c) {
   $("#dClose").onclick = closeDrawer;
   const pf = $("#payForm");
   const ptype = () => pf.querySelector("input[name=ptype]:checked").value;
   const syncType = () => { const p = ptype() === "pdc"; pf.querySelector(".pdcf").hidden = !p; pf.querySelector(".curf").hidden = p; pf.chequeDate.required = p;
-    $("#ptypeNote").textContent = p ? "Held as PDC. Not counted in received or expected until the cheque date." : "Counts as received now, against this month's expected."; };
+    $("#ptypeNote").textContent = p ? "The dues this PDC covers move to the month it matures, and it counts as received on that date." : "Counts as received now."; };
+  pf.chequeDate.oninput = () => { if (ptype() === "pdc" && pf.chequeDate.value) $("#ptypeNote").textContent = `These dues will move to ${mLabel(pf.chequeDate.value.slice(0, 7))} and count as received on ${fDate(pf.chequeDate.value)}.`; };
   $$("input[name=ptype]", pf).forEach(x => x.onchange = syncType);
-  $("#fillBal").onclick = () => { const r = calc(c, S.month); pf.amount.value = Math.max(0, r.short ?? r.carryNext).toFixed(2); };
+  $("#fillBal").onclick = () => { const r = calc(c, S.month); pf.amount.value = Math.max(0, r.balanceDue - r.pdcMaturing).toFixed(2); };
   pf.onsubmit = async e => { e.preventDefault(); const amount = num(pf.amount.value); if (!(amount > 0)) return toast("Enter an amount above zero", true);
-    const p = ptype() === "pdc"; if (p && !pf.chequeDate.value) return toast("Enter the cheque date for the PDC", true);
+    const p = ptype() === "pdc", mat = pf.chequeDate.value; if (p && !pf.chequeDate.value) { pf.chequeDate.focus(); return toast("Enter the maturing date of the PDC", true); }
     try { await store.upsert("payments", {id: newId(), customerId: c.id, customer: c.name, amount, date: pf.date.value, mode: p ? "PDC cheque" : pf.mode.value, ref: pf.ref.value.trim(), chequeDate: p ? pf.chequeDate.value : null, by: me.name, at: Date.now(), bounced: false});
-      pf.amount.value = ""; pf.ref.value = ""; pf.chequeDate.value = ""; toast(p ? `PDC of AED ${fmt(amount)} recorded` : `Payment of AED ${fmt(amount)} recorded`); } catch (err) { toast(err.message, true); } };
+      pf.amount.value = ""; pf.ref.value = ""; pf.chequeDate.value = ""; toast(p ? `PDC of AED ${fmt(amount)} recorded. Dues moved to ${mLabel(mat.slice(0, 7))}` : `Payment of AED ${fmt(amount)} recorded`); } catch (err) { toast(err.message, true); } };
   const ef = $("#editForm");
   ef.onsubmit = async e => { e.preventDefault(); try { await store.update("customers", c.id, {name: ef.name.value.trim(), creditDays: num(ef.creditDays.value), creditLimit: num(ef.creditLimit.value), contact: ef.contact.value.trim()}); toast("Details saved"); } catch (err) { toast(err.message, true); } };
   $("#delCust").onclick = async () => { if (!confirm(`Delete ${c.name} and all their monthly figures and payments?`)) return;
@@ -633,10 +708,10 @@ $("#tplBtn").onclick = () => {
 function exportExcel() {
   if (typeof XLSX === "undefined") return toast("Excel download needs an internet connection.", true);
   const rows = S.customers.map(c => calc(c, S.month)).sort((a, b) => a.c.name.localeCompare(b.c.name)), t = k => r2(rows.reduce((s, r) => s + (+r[k] || 0), 0));
-  const head = ["SL.NO", "CUSTOMER NAME", "CARRIED FORWARD", "NEW DUES", "DUE MONTH", "TOTAL OUTSTANDING", "EXPECTED AMOUNT", "RECEIVED", "PDC IN HAND", "SHORT OF EXPECTED", "CARRY FORWARD", "OLDEST DUE MONTH", "DAYS", "ABOVE CREDIT DAYS", "CREDIT DAYS APPROVED", "CREDIT LIMIT APPROVED", "REMARKS", "UPDATED BY", "CONTACT NUMBER"];
-  const body = rows.map((r, i) => [i + 1, r.c.name, r.carried, r.dues || null, r.dues ? mShort(r.dueMonth) : "", r.totalDue, r.expected, r.received, r.pdcHand || null, r.short, r.carryNext, r.oldest ? mShort(r.oldest.dm) : "", r.oldest ? r.oldest.age : null, r.overdue || null, r.c.creditDays, r.c.creditLimit, r.remarks, r.by, r.c.contact]);
-  body.push([], [null, "TOTAL", t("carried"), t("dues"), null, t("totalDue"), t("expected"), t("received"), t("pdcHand"), t("short"), t("carryNext"), null, null, t("overdue")]);
-  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ...body]); ws["!cols"] = head.map((x, i) => ({wch: i === 1 ? 40 : i === 15 ? 30 : 14}));
+  const head = ["SL.NO", "CUSTOMER NAME", "DUE THIS MONTH", "OVERDUE (PAST CREDIT DAYS)", "OVERDUE SINCE", "DAYS LATE", "RECEIVED", "BALANCE DUE", "PDC MATURING THIS MONTH", "PDC LATER MONTHS", "EXPECTED", "NEW DUES", "DUES MONTH", "NOT YET DUE", "TOTAL OUTSTANDING", "CREDIT DAYS", "CREDIT LIMIT", "REMARKS", "UPDATED BY", "CONTACT NUMBER"];
+  const body = rows.map((r, i) => [i + 1, r.c.name, r.dueThis, r.overdueStart || null, r.oldest ? mShort(r.oldest.dm) : "", r.oldest ? r.oldest.age : null, r.received, r.balanceDue, r.pdcMaturing || null, r.pdcLater || null, r.expected, r.dues || null, r.dues ? mShort(r.dueMonth) : "", r.notYet || null, r.totalOut, r.c.creditDays, r.c.creditLimit, r.remarks, r.by, r.c.contact]);
+  body.push([], [null, "TOTAL", t("dueThis"), t("overdueStart"), null, null, t("received"), t("balanceDue"), t("pdcMaturing"), t("pdcLater"), t("expected"), t("dues"), null, t("notYet"), t("totalOut")]);
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet([head, ...body]); ws["!cols"] = head.map((x, i) => ({wch: i === 1 ? 40 : i === 17 ? 30 : 14}));
   XLSX.utils.book_append_sheet(wb, ws, "Receivables");
   const names = Object.fromEntries(S.customers.map(c => [c.id, c.name]));
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["DATE", "CUSTOMER", "AMOUNT", "TYPE", "MODE", "REFERENCE", "CHEQUE DATE", "BOUNCED", "RECORDED BY"], ...S.payments.filter(x => inMonth(x.date, S.month)).sort((a, b) => a.date.localeCompare(b.date)).map(x => [x.date, names[x.customerId] || x.customer || "", x.amount, isPdc(x) ? "PDC" : "CURRENT", x.mode, x.ref, x.chequeDate, x.bounced ? "YES" : "", x.by])]), "Payments");
@@ -665,7 +740,7 @@ $("#mNext").onclick = () => { S.month = monthAdd(S.month, 1); render(); };
 $("#mToday").onclick = () => { S.month = thisMonth(); render(); };
 $("#mPick").onchange = e => { if (e.target.value) { S.month = e.target.value; render(); } };
 $("#q").oninput = e => { S.q = e.target.value; render(); };
-$("#sheetWrap").addEventListener("click", e => { const h = e.target.closest("th[data-sort]"); if (!h) return; const k = h.dataset.sort; if (S.sortKey === k) S.sortDir *= -1; else { S.sortKey = k; S.sortDir = ["name", "remarks", "dueMonth"].includes(k) ? 1 : -1; } render(); });
+$("#sheetWrap").addEventListener("click", e => { const h = e.target.closest("th[data-sort]"); if (!h) return; const k = h.dataset.sort; if (S.sortKey === k) S.sortDir *= -1; else { S.sortKey = k; S.sortDir = ["name", "remarks"].includes(k) ? 1 : -1; } render(); });
 $("#fMonth").onchange = e => { S.fMonth = e.target.value; render(); };
 $("#fDays").onchange = e => { S.fDays = e.target.value; render(); };
 $("#fRem").onchange = e => { S.fRem = e.target.value; render(); };
@@ -703,15 +778,15 @@ const enter = async (name, pw, remember) => {
 };
 $("#loginForm").onsubmit = async e => { e.preventDefault(); $("#lErr").hidden = true;
   if (!LIVE) { $("#lErr").textContent = "The Google Script link is missing. Paste it into SCRIPT_URL at the top of the script in index.html."; $("#lErr").hidden = false; return; }
-  $("#lBtn").disabled = true;
+  $("#lBtn").disabled = true; startLoading("Signing in…");
   try { KEEP = $("#lKeep").checked; await enter($("#lName").value.trim(), $("#lPass").value, true); }
-  catch (err) { $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\"." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
+  catch (err) { show("login"); $("#lErr").textContent = /password/i.test(err.message) ? "Wrong password." : /failed to fetch|load failed|networkerror/i.test(err.message) ? "Can't reach the Google Sheet. Open the Script link in a new tab: it must show \"RBM Receivables is running\"." : "Couldn't connect: " + err.message; $("#lErr").hidden = false; }
   $("#lBtn").disabled = false; };
 ["#lName", "#lPass"].forEach(id => { const el = $(id); el.value = ""; el.addEventListener("focus", () => el.removeAttribute("readonly"), {once: true}); });
 setTimeout(() => { ["#lName", "#lPass"].forEach(id => { const el = $(id); if (document.activeElement !== el && el.hasAttribute("readonly")) el.value = ""; }); }, 300);
 let saved = null;
 try { saved = JSON.parse(localStorage.getItem("rbm-session")); if (saved) KEEP = true; else saved = JSON.parse(sessionStorage.getItem("rbm-session")); } catch (e) {}
-if (LIVE && saved) enter(saved.name, saved.pw, false).catch(() => { try { bag().removeItem("rbm-session"); } catch (e) {} show("login"); });
+if (LIVE && saved) { startLoading("Opening receivables…"); enter(saved.name, saved.pw, false).catch(() => { try { bag().removeItem("rbm-session"); } catch (e) {} show("login"); }); }
 else show("login");
 </script>
 </body>
