@@ -291,22 +291,35 @@ class SheetStore {
      The sheet re-syncs every 20 s, and the last copy is cached so the page opens instantly. */
   constructor(pw) { this.pw = pw; this.cb = null; this.q = Promise.resolve(); this.pending = 0; this.d = null; }
   async call(body) {
+    // Sends small requests as GET (?p=...), which Google handles more reliably than POST redirects.
+    // Falls back to POST for large requests or an older Code.gs.
+    const payload = JSON.stringify({...body, pw: this.pw});
+    const useGet = SheetStore.get !== false && payload.length < 6000;
     let r;
-    try { r = await fetch(SCRIPT_URL, {method: "POST", body: JSON.stringify({...body, pw: this.pw})}); }
+    try { r = useGet ? await fetch(SCRIPT_URL + "?p=" + encodeURIComponent(payload)) : await fetch(SCRIPT_URL, {method: "POST", body: payload}); }
     catch (e) { const x = new Error("No connection to Google"); x.retry = true; throw x; }
     const txt = await r.text(); let j;
     try { j = JSON.parse(txt); }
     catch (e) {   // Google sent an error web page instead of data (busy / temporary server error)
       const t = (txt.match(/<title>([^<]*)<\/title>/i) || [])[1] || "";
       const body2 = (txt.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()).slice(0, 160);
-      const x = new Error("Google was busy (" + (t || body2 || "error page") + ")"); x.retry = true; x.detail = body2; throw x;
+      const x = new Error("Google returned an error page: " + (body2 || t || "no details")); x.retry = true; x.detail = txt.slice(0, 2000); throw x;
     }
-    if (!j.ok) throw new Error(j.error || "Request failed"); return j.data;
+    if (!j.ok) throw new Error(j.error || "Request failed");
+    if (!("data" in j)) {   // Google ran doGet instead of the request: old Code.gs or a redirect dropped the request
+      if (useGet) { SheetStore.get = false; return this.call(body); }
+      const x = new Error("Google answered without data. Your web app link is running old code: deploy the latest Code.gs as a New version."); x.retry = true; throw x;
+    }
+    if (body.action === "all" && (!j.data || typeof j.data !== "object")) { const x = new Error("Google sent incomplete data"); x.retry = true; throw x; }
+    return j.data;
   }
   badge() { const b = $("#sync"); if (b) b.textContent = this.pending ? "Saving…" : "Saved"; }
-  load(data) { this.d = Object.fromEntries(COLS.map(c => [c, Object.fromEntries((data[c] || []).map(o => [o.id, o]))])); try { bag().setItem("rbm-cache", JSON.stringify(data)); } catch (e) {} this.emit(); }
+  load(data) { data = data || {}; this.d = Object.fromEntries(COLS.map(c => [c, Object.fromEntries((data[c] || []).map(o => [o.id, o]))])); try { bag().setItem("rbm-cache", JSON.stringify(data)); } catch (e) {} this.emit(); }
   emit() { if (this.cb && this.d) this.cb(Object.fromEntries(COLS.map(c => [c, Object.values(this.d[c])]))); }
-  async refresh() { if (this.pending) return; try { const d = await this.call({action: "all"}); if (!this.pending) this.load(d); } catch (e) { if (/password/i.test(e.message)) { ["rbm-session", "rbm-cache"].forEach(k => { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (x) {} }); alert("The password has been changed. Please log in again."); return location.reload(); } toast("Couldn't load data: " + e.message, true); } }
+  async refresh() { if (this.pending || this.loading) return; this.loading = true;
+    try { let d; for (let i = 0; ; i++) { try { d = await this.call({action: "all"}); break; } catch (e) { if (!e.retry || i >= 2) throw e; await new Promise(r => setTimeout(r, 2000 * (i + 1))); } }
+      if (!this.pending) this.load(d); this.fails = 0; } catch (e) { if (/password/i.test(e.message)) { ["rbm-session", "rbm-cache"].forEach(k => { try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch (x) {} }); alert("The password has been changed. Please log in again."); return location.reload(); } console.warn(e.detail || e); this.fails = (this.fails || 0) + 1; if (this.fails === 1 || this.fails % 5 === 0) toast("Couldn't load the latest data. " + e.message, true); }
+    finally { this.loading = false; } }
   subscribe(cb) { this.cb = cb; this.emit(); if (!this.fresh) this.refresh(); this.fresh = false;
     const t = setInterval(() => { if (!document.hidden && !document.querySelector("dialog[open]")) this.refresh(); }, 20000);
     const vis = () => { if (!document.hidden) this.refresh(); }; document.addEventListener("visibilitychange", vis);
@@ -324,7 +337,7 @@ class SheetStore {
     return Promise.resolve();
   }
   async upsert(col, o) { return this.upsertMany([[col, o]]); }
-  async upsertMany(items) { items = clean(items); items.forEach(([c, o]) => this.d[c][o.id] = {...(this.d[c][o.id] || {}), ...o}); this.emit(); return this.send({action: "upsertMany", items}); }
+  async upsertMany(items) { items = clean(items); items.forEach(([c, o]) => this.d[c][o.id] = {...(this.d[c][o.id] || {}), ...o}); this.emit(); for (let i = 0; i < items.length; i += 15) this.send({action: "upsertMany", items: items.slice(i, i + 15)}); return Promise.resolve(); }
   async update(col, id, patch) { patch = clean(patch); if (this.d[col][id]) Object.assign(this.d[col][id], patch); this.emit(); return this.send({action: "update", col, id, patch}); }
   async remove(col, id) { delete this.d[col][id]; this.emit(); return this.send({action: "remove", col, id}); }
 }
@@ -678,7 +691,7 @@ $$("[data-signout]").forEach(b => b.onclick = () => { try { ["rbm-session", "rbm
 /* ---------- start: always ask for login ---------- */
 window.addEventListener("beforeunload", e => { if (store && store.pending) { e.preventDefault(); e.returnValue = ""; } });
 document.body.classList.add("live");
-const BACKEND_VERSION = 5;
+const BACKEND_VERSION = 6;
 const enter = async (name, pw, remember) => {
   const st = new SheetStore(pw);
   let cached = null; try { cached = JSON.parse(bag().getItem("rbm-cache")); } catch (e) {}
