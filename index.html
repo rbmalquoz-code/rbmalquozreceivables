@@ -402,14 +402,23 @@ const addDays = (iso, n) => { const [y, m, d] = iso.split("-").map(Number); retu
    3 RECEIVED        = current payments this month (+ PDCs that matured this month)
    4 BALANCE DUE     = 1 + 2 - 3
    A PDC moves the dues it covers to its maturing date. If it bounces, the dues come back. */
-function calc(c, m) {
+const isAdj = x => String(x.id).endsWith("_adj");   // manual "Due this month" correction, stored as its own monthly row
+function calc(c, m, ignoreAdj) {
   const start = m + "-01", end = monthEnd(m), td = today(), asOf = end < td ? end : td;
   const es = S.entries.filter(e => e.customerId === c.id && e.month <= m);
   const ps = S.payments.filter(p => p.customerId === c.id && !p.bounced);
   const e = entryOf(c.id, m) || {};
   // buckets of dues by month, each with the date its credit period ends
-  const bk = {}; es.forEach(x => { if (+x.dues) { const dm = x.dueMonth || x.month; bk[dm] = r2((bk[dm] || 0) + (+x.dues)); } });
+  const bk = {}; es.forEach(x => { if (!isAdj(x) && +x.dues) { const dm = x.dueMonth || x.month; bk[dm] = r2((bk[dm] || 0) + (+x.dues)); } });
   let buckets = Object.keys(bk).sort().map(dm => ({dm, due: dueDateOf(dm, c), amt: bk[dm], pdc: false}));
+  // manual corrections typed into "Due this month": + adds dues falling due at that month end, − reduces that month's dues
+  let adj = 0;
+  es.filter(x => isAdj(x) && +x.dues && !(ignoreAdj && x.month === m)).sort((a, b) => a.month.localeCompare(b.month)).forEach(x => {
+    const a = +x.dues, s0 = x.month + "-01", e0 = monthEnd(x.month); if (x.month === m) adj = a;
+    if (a > 0) buckets.push({dm: x.month, due: e0, amt: r2(a), pdc: false});
+    else { let left = -a; for (const b of buckets) { if (left <= 0) break; if (b.due >= s0 && b.due <= e0) { const t = Math.min(left, b.amt); b.amt = r2(b.amt - t); left = r2(left - t); } } }
+    buckets.sort((p, q) => p.due.localeCompare(q.due));
+  });
   // PDCs (received on or before month end) take over the oldest dues and move them to the maturing date
   const pdcs = ps.filter(p => isPdc(p) && p.date <= end).sort((a, b) => eff(a).localeCompare(eff(b)));
   pdcs.forEach(p => { let left = +p.amount;
@@ -445,7 +454,7 @@ function calc(c, m) {
   const oldest = overdue > 0.009 && oldestB ? {dm: oldestB.dm, age: Math.max(0, daysBetween(oldestB.due, asOf)), late: true} : null;
   const overLimit = +c.creditLimit > 0 && totalOut > +c.creditLimit;
   const expected = e.expected ?? null;
-  return {c, e, dues: +e.dues || 0, dueMonth: e.dueMonth || m, dueThis, overdue, overdueStart, received, recCur, pdcCleared, balanceDue, pdcMaturing, pdcLater, notYet, totalOut,
+  return {c, e, adj, dues: +e.dues || 0, dueMonth: e.dueMonth || m, dueThis, overdue, overdueStart, received, recCur, pdcCleared, balanceDue, pdcMaturing, pdcLater, notYet, totalOut,
     expected, short: expected != null ? r2(Math.max(0, expected - received)) : null, buckets, oldest, overLimit, remarks: e.remarks || "", by: e.by || "", at: e.at || null};
 }
 const daysBetween = (a, b) => Math.round((new Date(b + "T00:00") - new Date(a + "T00:00")) / 864e5);
@@ -513,10 +522,10 @@ function sheet(rows) {
   const opts = sel => mb.map(m => `<option value="${m}" ${m === sel ? "selected" : ""}>${mShort(m)}</option>`).join("") + (mb.includes(sel) ? "" : `<option value="${sel}" selected>${mShort(sel)}</option>`);
   const th = (k, label, cls = "") => `<th class="sortable ${cls} ${S.sortKey === k ? "on" : ""}" data-sort="${k}">${label}${S.sortKey === k ? `<span class="arr">${S.sortDir > 0 ? "▲" : "▼"}</span>` : ""}</th>`;
   $("#sheetWrap").innerHTML = `<table class="fit"><colgroup><col style="width:2.5%"><col style="width:15%"><col style="width:8.5%"><col style="width:9%"><col style="width:8.5%"><col style="width:8.5%"><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:6.5%"><col></colgroup>
-  <thead><tr><th>#</th>${th("name", "Customer")}${th("dueThis", "① Due this<br>month", "n")}${th("overdue", "② Overdue<br><small>past credit days</small>", "n")}${th("received", "③ Received", "n")}${th("balanceDue", "④ Balance<br>due", "n")}${th("pdc", "PDC<br><small>maturing</small>", "n")}${th("expected", "Expected", "n")}${th("dues", "New dues<br><small>& month</small>", "n")}${th("totalOut", "Total<br>outstanding", "n")}${th("creditDays", "Credit days<br><small>& limit</small>", "n")}${th("remarks", "Remarks")}</tr></thead><tbody>
+  <thead><tr><th>#</th>${th("name", "Customer")}${th("dueThis", "① Due this<br>month <small>(editable)</small>", "n")}${th("overdue", "② Overdue<br><small>past credit days</small>", "n")}${th("received", "③ Received", "n")}${th("balanceDue", "④ Balance<br>due", "n")}${th("pdc", "PDC<br><small>maturing</small>", "n")}${th("expected", "Expected", "n")}${th("dues", "New dues<br><small>& month</small>", "n")}${th("totalOut", "Total<br>outstanding", "n")}${th("creditDays", "Credit days<br><small>& limit</small>", "n")}${th("remarks", "Remarks")}</tr></thead><tbody>
   ${list.map((r, i) => `<tr data-id="${r.c.id}" class="${r.overdue > 0.009 ? "od" : ""}"><td class="muted">${i + 1}</td>
     <td class="party">${esc(r.c.name)}${r.overLimit ? ` <span class="tag t-limit">Over limit</span>` : ""}<small>${esc(r.c.contact || "")}</small></td>
-    <td class="n">${fz(r.dueThis)}${r.pdcMaturing + r.pdcCleared > 0.009 ? `<span class="pdcline">incl. PDC</span>` : ""}</td>
+    <td class="edit"><input class="cell" data-id="${r.c.id}" data-f="dueThis" inputmode="decimal" value="${r.dueThis > 0.009 ? fmt(r.dueThis) : ""}" placeholder="0.00" aria-label="Due this month" style="font-weight:600">${r.adj ? `<span class="age" title="Changed by hand">edited ${r.adj > 0 ? "+" : "−"}${fmt(Math.abs(r.adj))}</span>` : ""}${r.pdcMaturing + r.pdcCleared > 0.009 ? `<span class="pdcline">incl. PDC</span>` : ""}</td>
     <td class="n red">${r.overdueStart > 0.009 ? `<b>${fmt(r.overdue)}</b>${r.oldest ? `<span class="age red">since ${mShort(r.oldest.dm)}, ${r.oldest.age} days late</span>` : `<span class="age">was ${fmt(r.overdueStart)}</span>`}` : ""}</td>
     <td class="n green">${fz(r.received)}<button class="addpay" data-pay="${r.c.id}" title="Record payment">+</button></td>
     <td class="n ${r.overdue > 0.009 ? "red" : ""}"><b>${fz(r.balanceDue)}</b></td>
@@ -534,6 +543,13 @@ async function saveCell(inp) {
   if (!txt && inp.value.trim() !== "" && val == null) { toast("Enter a number", true); return; }
   try {
     if (f === "creditDays" || f === "creditLimit") { if ((c[f] ?? null) === val) return; await store.update("customers", cid, {[f]: val}); }
+    else if (f === "dueThis") {
+      const id = entryId(cid, S.month) + "_adj", old = S.entries.find(x => x.id === id);
+      const adj = val == null ? 0 : r2(val - calc(c, S.month, true).dueThis);
+      if (r2((old && +old.dues) || 0) === adj) return;
+      if (!adj) { if (old) await store.remove("entries", id); }
+      else await store.upsert("entries", {id, customerId: cid, customer: c.name, month: S.month, dues: adj, dueMonth: S.month, expected: null, remarks: "", by: me.name, at: Date.now()});
+    }
     else { const e = entryOf(cid, S.month); if (((e || {})[f] ?? (f === "remarks" ? "" : f === "dueMonth" ? S.month : null)) === val) return;
       await store.upsert("entries", {...(e || {id: entryId(cid, S.month), customerId: cid, month: S.month, dues: null, dueMonth: S.month, expected: null, remarks: ""}), customer: c.name, [f]: val, by: me.name, at: Date.now()}); }
     toast("Saved");
