@@ -218,6 +218,7 @@ table.fit .tag{font-size:10.5px;padding:0 5px}
   <nav class="tabs"><button data-tab="sheet" class="on">Monthly sheet</button><button data-tab="log">Payments received</button><div class="filters" id="filtersRow">
       <label>Oldest due month<select id="fMonth"></select></label>
       <label>Credit days<select id="fDays"></select></label>
+      <label>Expected<select id="fExp"><option value="">Any</option><option value="set">Expected set</option><option value="short">Short of expected</option><option value="met">Expected collected</option><option value="none">No expected set</option><option value="over">Due is more than expected</option></select></label>
       <label>Remarks<select id="fRem"><option value="">Any</option><option value="with">With remarks</option><option value="without">Without remarks</option></select></label>
       <button class="btn ghost sm" id="fClear">Clear filters</button>
     </div></nav>
@@ -379,7 +380,7 @@ class SheetStore {
 }
 
 let store, me = null, unsub = null, deferred = false;
-const S = {customers: [], entries: [], payments: [], month: thisMonth(), filter: "all", q: "", fMonth: "", fDays: "", fRem: "", sortKey: "balanceDue", sortDir: -1, tab: "sheet", open: null};
+const S = {customers: [], entries: [], payments: [], month: thisMonth(), filter: "all", q: "", fMonth: "", fDays: "", fRem: "", fExp: "", sortKey: "balanceDue", sortDir: -1, tab: "sheet", open: null};
 
 /* ---------- engine ----------
    Carried forward = all earlier dues minus all earlier payments (automatic).
@@ -466,13 +467,17 @@ const chipTest = {all: () => true, overdue: r => r.overdue > 0.009, due: r => r.
 const SORTS = {name: r => r.c.name.toLowerCase(), dueThis: r => r.dueThis, overdue: r => r.overdue, received: r => r.received, balanceDue: r => r.balanceDue,
   pdc: r => r.pdcMaturing + r.pdcLater, expected: r => r.expected ?? -1, dues: r => r.dues, totalOut: r => r.totalOut, oldest: r => r.oldest ? r.oldest.age : -1,
   creditDays: r => r.c.creditDays ?? -1, remarks: r => r.remarks.toLowerCase()};
+const hasExp = r => r.expected != null && +r.expected > 0;
+const expTest = {set: hasExp, short: r => hasExp(r) && r.received < r.expected - 0.009, met: r => hasExp(r) && r.received >= r.expected - 0.009,
+  none: r => !hasExp(r) && r.balanceDue > 0.009, over: r => hasExp(r) && r.dueThis + r.overdueStart > r.expected + 0.009};
 function applyFilters(rows) {
   const q = S.q.toLowerCase();
   return rows.filter(r => chipTest[S.filter](r)
     && (!q || [r.c.name, r.c.contact, r.remarks].join(" ").toLowerCase().includes(q))
     && (!S.fMonth || (r.oldest && r.oldest.dm === S.fMonth))
     && (!S.fDays || String(r.c.creditDays ?? "none") === S.fDays)
-    && (!S.fRem || (S.fRem === "with" ? !!r.remarks : !r.remarks)))
+    && (!S.fRem || (S.fRem === "with" ? !!r.remarks : !r.remarks))
+    && (!S.fExp || expTest[S.fExp](r)))
     .sort((a, b) => { const x = SORTS[S.sortKey](a), y = SORTS[S.sortKey](b); return (x < y ? -1 : x > y ? 1 : 0) * S.sortDir || a.c.name.localeCompare(b.c.name); });
 }
 
@@ -507,7 +512,7 @@ function fillFilterSelects(rows) {
   const days = [...new Set(rows.map(r => String(r.c.creditDays ?? "none")))].sort((a, b) => (a === "none") - (b === "none") || a - b);
   $("#fMonth").innerHTML = `<option value="">All</option>` + months.map(m => `<option value="${m}" ${S.fMonth === m ? "selected" : ""}>${mShort(m)}</option>`).join("");
   $("#fDays").innerHTML = `<option value="">All</option>` + days.map(d => `<option value="${d}" ${S.fDays === d ? "selected" : ""}>${d === "none" ? "Not set" : d + " days"}</option>`).join("");
-  $("#fRem").value = S.fRem;
+  $("#fRem").value = S.fRem; $("#fExp").value = S.fExp;
 }
 function sheet(rows) {
   const counts = Object.fromEntries(Object.keys(CHIPS).map(k => [k, rows.filter(chipTest[k]).length]));
@@ -760,7 +765,8 @@ $("#sheetWrap").addEventListener("click", e => { const h = e.target.closest("th[
 $("#fMonth").onchange = e => { S.fMonth = e.target.value; render(); };
 $("#fDays").onchange = e => { S.fDays = e.target.value; render(); };
 $("#fRem").onchange = e => { S.fRem = e.target.value; render(); };
-$("#fClear").onclick = () => { Object.assign(S, {filter: "all", q: "", fMonth: "", fDays: "", fRem: ""}); $("#q").value = ""; render(); };
+$("#fExp").onchange = e => { S.fExp = e.target.value; render(); };
+$("#fClear").onclick = () => { Object.assign(S, {filter: "all", q: "", fMonth: "", fDays: "", fRem: "", fExp: ""}); $("#q").value = ""; render(); };
 $("#chips").onclick = e => { const b = e.target.closest("[data-f]"); if (b) { S.filter = b.dataset.f; render(); } };
 $("#exportBtn").onclick = exportExcel;
 $("#sheetWrap").addEventListener("change", e => { if (e.target.classList.contains("cell")) saveCell(e.target); });
